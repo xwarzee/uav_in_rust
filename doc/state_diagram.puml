@@ -1,0 +1,74 @@
+@startuml Drone State Diagram
+!theme plain
+
+[*] --> Idle : Drone created
+
+state Idle {
+  Idle : velocity = 0
+  Idle : target_position = None
+  Idle : waiting for commands
+}
+
+state Navigating {
+  Navigating : moving to target_position
+  Navigating : velocity > 0
+  Navigating : updating position each frame
+}
+
+state InFormation {
+  InFormation : maintaining formation offset
+  InFormation : following leader
+  InFormation : may be moving or stationary
+}
+
+state ExecutingMission {
+  ExecutingMission : following mission waypoints
+  ExecutingMission : coordinated with swarm
+  ExecutingMission : progressing through objectives
+}
+
+state Error {
+  Error : error_message stored
+  Error : requires intervention
+  Error : drone halted
+}
+
+Idle --> Navigating : move_to(target)\ncalled
+Idle --> InFormation : set_formation_offset()\ncalled
+Idle --> ExecutingMission : mission assigned
+
+Navigating --> Idle : reached target\n(distance < 0.1)
+Navigating --> InFormation : set_formation_offset()\ncalled
+Navigating --> ExecutingMission : mission started
+Navigating --> Error : error occurs
+
+InFormation --> Navigating : new target or\nout of position\n(distance > 1.0)
+InFormation --> ExecutingMission : mission started
+InFormation --> Error : error occurs
+
+ExecutingMission --> Navigating : moving to waypoint
+ExecutingMission --> Idle : mission completed
+ExecutingMission --> Error : mission failed
+
+Error --> Idle : error resolved
+
+note right of ExecutingMission
+  During mission execution:
+  1. MissionExecutor sets status
+  2. Calls move_to() for waypoints
+  3. Drone enters Navigating state
+  4. Returns to ExecutingMission
+  5. Finally returns to Idle
+end note
+
+note left of InFormation
+  Formation maintenance:
+  - FormationManager calculates
+    target positions
+  - If distance > 1.0: move_to()
+    triggers Navigating
+  - If distance < 1.0: stays
+    InFormation
+end note
+
+@enduml

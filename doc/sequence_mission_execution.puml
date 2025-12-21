@@ -1,0 +1,119 @@
+@startuml Mission Execution Sequence
+!theme plain
+autonumber
+
+actor User
+participant "main" as Main
+participant "DroneSwarm" as Swarm
+participant "MissionExecutor" as MissionExec
+participant "Mission" as Mission
+participant "Drone" as Drone
+
+User -> Main: execute mission command\n(target_x, target_y, target_z)
+activate Main
+
+Main -> Main: parse coordinates
+Main -> Swarm: execute_mission(target)
+activate Swarm
+
+Swarm -> Swarm: get all drone_ids
+
+Swarm -> MissionExec: create_mission(\nMissionType::MoveTo(target),\ndrone_ids)
+activate MissionExec
+
+MissionExec -> MissionExec: increment mission_counter
+MissionExec -> Mission: new(mission_id, mission_type)
+activate Mission
+Mission -> Mission: initialize waypoints\nfrom mission_type
+Mission --> MissionExec: mission
+deactivate Mission
+
+MissionExec -> MissionExec: store in active_missions
+MissionExec --> Swarm: mission_id
+deactivate MissionExec
+
+Swarm -> MissionExec: start_mission(mission_id)
+activate MissionExec
+MissionExec -> Mission: start()
+activate Mission
+Mission -> Mission: set status = InProgress\ncurrent_waypoint = 0
+Mission --> MissionExec:
+deactivate Mission
+MissionExec --> Swarm: Ok()
+deactivate MissionExec
+
+Swarm -> MissionExec: execute_mission(\nmission_id, drones)
+activate MissionExec
+
+loop For each waypoint
+  MissionExec -> Mission: get_current_target()
+  activate Mission
+  Mission --> MissionExec: current_waypoint_position
+  deactivate Mission
+
+  loop For each assigned drone
+    MissionExec -> Drone: set status = ExecutingMission
+    activate Drone
+    Drone --> MissionExec:
+    deactivate Drone
+
+    MissionExec -> Drone: move_to(target)
+    activate Drone
+    Drone -> Drone: set target_position\nset status = Navigating
+    Drone --> MissionExec:
+    deactivate Drone
+  end
+
+  loop Until all drones arrive
+    MissionExec -> Drone: update_position(dt)
+    activate Drone
+    Drone -> Drone: calculate direction\nupdate position\nupdate velocity
+    Drone --> MissionExec:
+    deactivate Drone
+
+    MissionExec -> Drone: check distance_to(target)
+    activate Drone
+    Drone --> MissionExec: distance
+    deactivate Drone
+
+    alt distance > 1.0
+      MissionExec -> MissionExec: sleep(100ms)
+    else all arrived
+      MissionExec -> MissionExec: break loop
+      MissionExec -> MissionExec: print "waypoint reached"
+    end
+  end
+
+  MissionExec -> Mission: advance_waypoint()
+  activate Mission
+  Mission -> Mission: increment current_waypoint
+  alt more waypoints
+    Mission --> MissionExec: true
+  else last waypoint
+    Mission -> Mission: set status = Completed
+    Mission --> MissionExec: false
+  end
+  deactivate Mission
+
+  alt mission completed
+    loop For each drone
+      MissionExec -> Drone: set status = Idle
+      activate Drone
+      Drone --> MissionExec:
+      deactivate Drone
+    end
+    MissionExec -> MissionExec: break loop
+  end
+end
+
+MissionExec --> Swarm: Ok()
+deactivate MissionExec
+
+Swarm --> Main:
+deactivate Swarm
+
+Main -> Main: print "Mission completed"
+Main --> User:
+deactivate Main
+
+@enduml

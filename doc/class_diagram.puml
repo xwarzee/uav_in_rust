@@ -1,0 +1,174 @@
+@startuml UAV Swarm Class Diagram
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+
+' Core Data Structures
+class Position {
+  +x: f64
+  +y: f64
+  +z: f64
+  --
+  +new(x, y, z): Position
+  +distance_to(&Position): f64
+  +add(&Position): Position
+  +subtract(&Position): Position
+  +normalize(): Position
+  +scale(f64): Position
+}
+
+class Velocity {
+  +vx: f64
+  +vy: f64
+  +vz: f64
+  --
+  +new(vx, vy, vz): Velocity
+  +zero(): Velocity
+  +magnitude(): f64
+}
+
+enum DroneStatus {
+  Idle
+  Navigating
+  InFormation
+  ExecutingMission
+  Error(String)
+}
+
+class Drone {
+  +id: String
+  +position: Position
+  +velocity: Velocity
+  +status: DroneStatus
+  +target_position: Option<Position>
+  +formation_offset: Option<Position>
+  +max_speed: f64
+  +last_update: Instant
+  --
+  +new(id, initial_position): Drone
+  +move_to(target: Position)
+  +set_formation_offset(offset: Position)
+  +update_position(dt: f64)
+  +get_status_info(): DroneStatusInfo
+}
+
+class DroneStatusInfo {
+  +id: String
+  +position: Position
+  +velocity: Velocity
+  +status: DroneStatus
+}
+
+' Formation System
+enum FormationType {
+  Triangle
+  Line
+  VFormation
+}
+
+class FormationManager {
+  -formation_type: FormationType
+  -leader_position: Position
+  -formation_offsets: HashMap<String, Position>
+  -separation_distance: f64
+  --
+  +new(): FormationManager
+  +set_formation_type(FormationType)
+  +set_leader_position(Position)
+  +set_separation_distance(f64)
+  +add_drone(String)
+  +get_target_position(&str): Option<Position>
+  +update_formation(&mut HashMap<String, Drone>)
+  +is_formation_stable(&HashMap<String, Drone>): bool
+  --
+  -calculate_offsets()
+  -calculate_triangle_formation(&[String])
+  -calculate_line_formation(&[String])
+  -calculate_v_formation(&[String])
+}
+
+' Mission System
+enum MissionType {
+  MoveTo(Position)
+  Patrol(Vec<Position>)
+  Search(Position, f64)
+}
+
+enum MissionStatus {
+  NotStarted
+  InProgress
+  Completed
+  Failed(String)
+}
+
+class Mission {
+  +id: String
+  +mission_type: MissionType
+  +status: MissionStatus
+  +assigned_drones: Vec<String>
+  +waypoints: Vec<Position>
+  +current_waypoint: usize
+  --
+  +new(id, mission_type): Mission
+  +assign_drones(Vec<String>)
+  +start()
+  +get_current_target(): Option<Position>
+  +advance_waypoint(): bool
+}
+
+class MissionExecutor {
+  -active_missions: HashMap<String, Mission>
+  -mission_counter: u32
+  --
+  +new(): MissionExecutor
+  +create_mission(MissionType, Vec<String>): String
+  +start_mission(&str): Result<(), String>
+  +execute_mission(&str, &mut HashMap<String, Drone>): Result<(), String>
+  +get_mission_status(&str): Option<&MissionStatus>
+  +list_active_missions(): Vec<String>
+  +cancel_mission(&str): Result<(), String>
+}
+
+' Swarm Orchestrator
+class DroneSwarm {
+  +drones: HashMap<String, Drone>
+  +formation_manager: FormationManager
+  +mission_executor: MissionExecutor
+  +simulation_running: bool
+  -last_update: Instant
+  --
+  +new(): DroneSwarm
+  +add_drone(&str, Position)
+  +set_formation(&str)
+  +execute_mission(Position): async
+  +execute_patrol_mission(Vec<Position>): async
+  +execute_search_mission(Position, f64): async
+  +get_swarm_status(): Vec<DroneStatusInfo>
+  +update_swarm()
+  +start_simulation(): async
+  +stop_simulation()
+  +demonstrate_capabilities()
+}
+
+' Relationships
+Drone "1" *-- "1" Position : has
+Drone "1" *-- "1" Velocity : has
+Drone "1" *-- "1" DroneStatus : has
+Drone "1" ..> "1" DroneStatusInfo : creates
+
+FormationManager "1" *-- "1" FormationType : uses
+FormationManager "1" o-- "*" Position : manages offsets
+FormationManager ..> Drone : updates
+
+Mission "1" *-- "1" MissionType : has
+Mission "1" *-- "1" MissionStatus : has
+Mission "1" o-- "*" Position : waypoints
+
+MissionExecutor "1" o-- "*" Mission : manages
+MissionExecutor ..> Drone : coordinates
+
+DroneSwarm "1" *-- "1" FormationManager : owns
+DroneSwarm "1" *-- "1" MissionExecutor : owns
+DroneSwarm "1" o-- "*" Drone : manages
+
+@enduml

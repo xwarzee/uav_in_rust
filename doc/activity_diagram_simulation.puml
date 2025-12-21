@@ -1,0 +1,135 @@
+@startuml Simulation Activity Diagram
+!theme plain
+
+start
+
+:User starts application;
+
+:Parse CLI arguments;
+
+:Create DroneSwarm;
+
+:Add 3 drones with\ninitial positions;
+
+if (Command?) then (start)
+  :Start simulation;
+
+  :Set simulation_running = true;
+
+  :Print initial status;
+
+  fork
+    :Simulation Loop;
+    repeat
+      :Calculate delta time (dt);
+
+      fork
+        :Update all drone positions;
+        repeat :For each drone;
+          :Update position based on\nvelocity and dt;
+
+          if (Has target?) then (yes)
+            :Calculate direction;
+            :Update velocity;
+            :Move toward target;
+
+            if (Distance < 0.1?) then (yes)
+              :Reach target;
+              :Set velocity = 0;
+              :Set status = Idle;
+            endif
+          endif
+        repeat while (More drones?)
+      fork again
+        :Check formation stability;
+
+        if (Formation stable?) then (yes)
+          :Maintain formation;
+          :Update formation positions;
+        endif
+      end fork
+
+      :Update last_update timestamp;
+
+      if (iteration % 10 == 0?) then (yes)
+        :Print swarm status;
+      endif
+
+      :Sleep 100ms;
+
+      :Increment iteration;
+
+    repeat while (simulation_running\nAND iteration < 100?)
+
+    :Print "Simulation ended";
+  fork again
+    :Monitor for stop signal;
+  end fork
+
+elseif (Command?) then (formation)
+  :Parse formation type;
+
+  :Set formation type\nin FormationManager;
+
+  :Calculate formation offsets;
+
+  :Update all drones to\nformation positions;
+
+  :Print confirmation;
+
+elseif (Command?) then (mission)
+  :Parse target coordinates;
+
+  :Create target Position;
+
+  :Get all drone IDs;
+
+  :Create MoveTo mission;
+
+  :Assign drones to mission;
+
+  :Start mission;
+
+  fork
+    :Mission Execution Loop;
+    repeat
+      :Get current waypoint;
+
+      fork
+        :Assign target to all drones;
+        repeat :For each drone;
+          :Set status = ExecutingMission;
+          :Set target_position;
+        repeat while (More drones?)
+      fork again
+        :Wait for arrival;
+        repeat
+          :Update drone positions;
+          :Check distances;
+          :Sleep 100ms;
+        repeat while (Any drone\nnot arrived?)
+      end fork
+
+      :Print waypoint reached;
+
+      if (More waypoints?) then (yes)
+        :Advance to next waypoint;
+      else (no)
+        :Mark mission complete;
+        :Set drones to Idle;
+      endif
+
+    repeat while (Mission not complete?)
+  fork again
+    :Monitor mission status;
+  end fork
+
+  :Print mission completed;
+
+else (help or unknown)
+  :Print usage information;
+endif
+
+stop
+
+@enduml

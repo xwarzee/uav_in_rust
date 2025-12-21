@@ -1,0 +1,95 @@
+@startuml Formation Change Sequence
+!theme plain
+autonumber
+
+actor User
+participant "main" as Main
+participant "DroneSwarm" as Swarm
+participant "FormationManager" as FormMgr
+participant "Drone" as Drone
+
+User -> Main: set formation command\n(e.g., "triangle")
+activate Main
+
+Main -> Swarm: set_formation(formation_type)
+activate Swarm
+
+Swarm -> FormMgr: FormationType::from_str(formation_type)
+activate FormMgr
+FormMgr --> Swarm: Some(FormationType::Triangle)
+deactivate FormMgr
+
+Swarm -> FormMgr: set_formation_type(formation)
+activate FormMgr
+
+FormMgr -> FormMgr: update formation_type
+FormMgr -> FormMgr: calculate_offsets()
+activate FormMgr
+
+FormMgr -> FormMgr: get all drone_ids\nfrom formation_offsets
+
+alt Triangle Formation
+  FormMgr -> FormMgr: calculate_triangle_formation()
+  FormMgr -> FormMgr: Leader: (0, 0, 0)\nLeft: (-d, -d*0.866, 0)\nRight: (d, -d*0.866, 0)
+else Line Formation
+  FormMgr -> FormMgr: calculate_line_formation()
+  FormMgr -> FormMgr: Spread drones along X axis
+else V Formation
+  FormMgr -> FormMgr: calculate_v_formation()
+  FormMgr -> FormMgr: Leader: (0, 0, 0)\nLeft: (-d, -d, 0)\nRight: (d, -d, 0)
+end
+
+FormMgr -> FormMgr: update formation_offsets\nfor each drone
+deactivate FormMgr
+
+FormMgr --> Swarm:
+deactivate FormMgr
+
+Swarm -> FormMgr: update_formation(drones)
+activate FormMgr
+
+FormMgr -> FormMgr: find leader drone\n(first in collection)
+FormMgr -> FormMgr: set leader_position
+
+loop For each drone
+  FormMgr -> FormMgr: get_target_position(drone_id)
+  FormMgr -> FormMgr: calculate:\nleader_position + offset
+
+  FormMgr -> Drone: check distance_to(target_pos)
+  activate Drone
+  Drone --> FormMgr: distance
+  deactivate Drone
+
+  alt distance > 1.0
+    FormMgr -> Drone: move_to(target_pos)
+    activate Drone
+    Drone -> Drone: set target_position\nset status = Navigating
+    Drone --> FormMgr:
+    deactivate Drone
+  else close enough
+    FormMgr -> Drone: set_formation_offset(offset)
+    activate Drone
+    Drone -> Drone: set formation_offset\nset status = InFormation
+    Drone --> FormMgr:
+    deactivate Drone
+  end
+end
+
+FormMgr --> Swarm:
+deactivate FormMgr
+
+Swarm -> Swarm: print "Formation changed"
+Swarm --> Main:
+deactivate Swarm
+
+Main -> Main: print "Formation set to: {type}"
+Main --> User:
+deactivate Main
+
+note over User, Drone
+  After formation change, the swarm's update loop
+  will continuously call update_formation() to
+  maintain the formation as drones move.
+end note
+
+@enduml

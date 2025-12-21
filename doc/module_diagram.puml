@@ -1,0 +1,80 @@
+@startuml UAV Swarm Module Diagram
+!theme plain
+
+package "UAV Swarm System" {
+
+  [main] as Main
+
+  package "Core Modules" {
+    [drone] as Drone
+    [swarm] as Swarm
+    [formation] as Formation
+    [mission] as Mission
+  }
+
+  package "External Dependencies" {
+    [tokio] as Tokio
+    [clap] as Clap
+    [serde] as Serde
+    [uuid] as UUID
+  }
+}
+
+' Module dependencies
+Main --> Swarm : uses DroneSwarm
+Main --> Drone : uses Position
+Main --> Clap : CLI parsing
+
+Swarm --> Drone : manages Drone
+Swarm --> Formation : uses FormationManager
+Swarm --> Mission : uses MissionExecutor
+Swarm --> Tokio : async runtime
+
+Formation --> Drone : configures Position
+
+Mission --> Drone : coordinates movement
+Mission --> Tokio : async execution
+
+Drone --> Serde : serialization
+Drone --> UUID : identification (potential)
+
+note right of Main
+  Entry point with CLI
+  - Initializes swarm
+  - Handles commands
+  - Manages application flow
+end note
+
+note right of Swarm
+  Central orchestrator
+  - Manages all drones
+  - Coordinates formations
+  - Executes missions
+  - Provides status updates
+end note
+
+note right of Formation
+  Formation management
+  - Triangle formation
+  - Line formation
+  - V-formation
+  - Dynamic reconfiguration
+end note
+
+note right of Mission
+  Mission execution
+  - MoveTo missions
+  - Patrol missions
+  - Search patterns
+  - Waypoint navigation
+end note
+
+note right of Drone
+  Core drone entity
+  - Position & velocity
+  - Status management
+  - Movement logic
+  - Collision avoidance
+end note
+
+@enduml
