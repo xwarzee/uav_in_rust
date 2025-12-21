@@ -73,6 +73,11 @@ The UAV Swarm System is a sophisticated drone coordination platform that enables
 
 This diagram shows all structs, enums, and their relationships in the system.
 
+![Class Diagram](images/UAV%20Swarm%20Class%20Diagram.png)
+
+<details>
+<summary>View PlantUML Source</summary>
+
 ```plantuml
 @startuml UAV Swarm Class Diagram
 !theme plain
@@ -250,6 +255,8 @@ DroneSwarm "1" o-- "*" Drone : manages
 @enduml
 ```
 
+</details>
+
 ### Key Relationships
 
 - **Composition** (*--): Strong ownership (e.g., Drone owns its Position)
@@ -299,6 +306,11 @@ Top-level orchestrator that:
 ## Module Architecture
 
 This diagram shows the module structure and dependencies.
+
+![Module Diagram](images/UAV%20Swarm%20Module%20Diagram.png)
+
+<details>
+<summary>View PlantUML Source</summary>
 
 ```plantuml
 @startuml UAV Swarm Module Diagram
@@ -383,6 +395,8 @@ end note
 @enduml
 ```
 
+</details>
+
 ### Module Responsibilities
 
 #### main (src/main.rs)
@@ -425,6 +439,11 @@ end note
 ### Mission Execution Flow
 
 This sequence diagram shows how a mission is executed from user command to completion.
+
+![Mission Execution Sequence](images/Mission%20Execution%20Sequence.png)
+
+<details>
+<summary>View PlantUML Source</summary>
 
 ```plantuml
 @startuml Mission Execution Sequence
@@ -548,6 +567,8 @@ deactivate Main
 @enduml
 ```
 
+</details>
+
 #### Key Steps:
 
 1. **Mission Creation**: User provides target coordinates, system creates MoveTo mission
@@ -571,6 +592,11 @@ deactivate Main
 ### Formation Change Flow
 
 This sequence diagram illustrates how formations are changed and maintained.
+
+![Formation Change Sequence](images/Formation%20Change%20Sequence.png)
+
+<details>
+<summary>View PlantUML Source</summary>
 
 ```plantuml
 @startuml Formation Change Sequence
@@ -670,6 +696,8 @@ end note
 @enduml
 ```
 
+</details>
+
 #### Formation Types:
 
 **Triangle Formation**:
@@ -708,6 +736,11 @@ Drone1 ---- Drone2 ---- Drone3
 ### Drone State Machine
 
 This state diagram shows all possible drone states and transitions.
+
+![Drone State Diagram](images/Drone%20State%20Diagram.png)
+
+<details>
+<summary>View PlantUML Source</summary>
 
 ```plantuml
 @startuml Drone State Diagram
@@ -786,6 +819,8 @@ end note
 @enduml
 ```
 
+</details>
+
 #### State Descriptions:
 
 **Idle**
@@ -828,6 +863,11 @@ end note
 ### Simulation Activity
 
 This activity diagram shows the overall application flow and concurrent activities.
+
+![Simulation Activity Diagram](images/Simulation%20Activity%20Diagram.png)
+
+<details>
+<summary>View PlantUML Source</summary>
 
 ```plantuml
 @startuml Simulation Activity Diagram
@@ -966,6 +1006,8 @@ stop
 
 @enduml
 ```
+
+</details>
 
 #### Command Flow:
 
