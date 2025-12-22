@@ -43,19 +43,19 @@ cargo run -- mission 100.0 50.0 20.0
 
 ### Documentation
 
-Comprehensive UML diagrams and architecture documentation are available in the `doc/` folder:
+Comprehensive UML diagrams and architecture documentation are available in the `doc/software/` folder:
 
-- **[ARCHITECTURE.md](doc/ARCHITECTURE.md)** - Complete architecture documentation with UML diagrams
-- **[VIEWING_DIAGRAMS.md](doc/VIEWING_DIAGRAMS.md)** - Guide for viewing diagrams in different environments
+- **[ARCHITECTURE.md](doc/software/ARCHITECTURE.md)** - Complete architecture documentation with UML diagrams
+- **[VIEWING_DIAGRAMS.md](doc/software/VIEWING_DIAGRAMS.md)** - Guide for viewing diagrams in different environments
 - **Individual Diagrams**:
-  - [Class Diagram](doc/class_diagram.puml) - System structure
-  - [Module Diagram](doc/module_diagram.puml) - Dependencies
-  - [Mission Execution Sequence](doc/sequence_mission_execution.puml) - Mission flow
-  - [Formation Change Sequence](doc/sequence_formation_change.puml) - Formation updates
-  - [State Diagram](doc/state_diagram.puml) - Drone states
-  - [Activity Diagram](doc/activity_diagram_simulation.puml) - Simulation flow
+  - [Class Diagram](doc/software/class_diagram.puml) - System structure
+  - [Module Diagram](doc/software/module_diagram.puml) - Dependencies
+  - [Mission Execution Sequence](doc/software/sequence_mission_execution.puml) - Mission flow
+  - [Formation Change Sequence](doc/software/sequence_formation_change.puml) - Formation updates
+  - [State Diagram](doc/software/state_diagram.puml) - Drone states
+  - [Activity Diagram](doc/software/activity_diagram_simulation.puml) - Simulation flow
 
-All diagrams are available as both PlantUML source files (`.puml`) and rendered images (PNG) in `doc/images/`.
+All diagrams are available as both PlantUML source files (`.puml`) and rendered images (PNG) in `doc/software/images/`.
 
 ## Example Session
 
