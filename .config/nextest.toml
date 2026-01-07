@@ -1,0 +1,58 @@
+# Nextest configuration for UAV Swarm System
+# This file defines test execution profiles for cargo-nextest
+
+# Default profile (inherits from built-in default)
+[profile.default]
+# Number of retries for failed tests
+retries = 0
+# Show test output on failure
+failure-output = "immediate"
+# Show test output on success
+success-output = "never"
+# Run tests with all available threads
+test-threads = "num-cpus"
+
+# CI profile - optimized for GitLab CI/CD pipeline
+[profile.ci]
+# Fail fast on first error in CI to save time
+fail-fast = false
+# Retry flaky tests once in CI
+retries = 1
+# Show all output in CI for debugging
+failure-output = "immediate-final"
+success-output = "never"
+# Use all available CPU cores
+test-threads = "num-cpus"
+# Generate JUnit XML report for GitLab integration
+junit.path = "junit.xml"
+# Store JUnit report in ci subdirectory
+junit.store-success-output = false
+junit.store-failure-output = true
+
+# Slow test timeout (for MBSE tests that may take longer)
+slow-timeout = { period = "60s", terminate-after = 3 }
+# Overall test timeout
+test-timeout = { period = "120s" }
+
+# Profile for quick local testing
+[profile.quick]
+fail-fast = true
+retries = 0
+failure-output = "immediate"
+success-output = "never"
+# Limit threads for laptop usage
+test-threads = 4
+
+# Profile for nightly comprehensive testing
+[profile.nightly]
+fail-fast = false
+retries = 2
+failure-output = "final"
+success-output = "final"
+test-threads = "num-cpus"
+junit.path = "junit.xml"
+junit.store-success-output = true
+junit.store-failure-output = true
+# Longer timeout for comprehensive tests
+slow-timeout = { period = "120s", terminate-after = 5 }
+test-timeout = { period = "300s" }

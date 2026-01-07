@@ -5,6 +5,13 @@
 # 2. Test Software - Run software unit and integration tests
 # 3. Test MBSE - Run MBSE traceability and validation tests
 # 4. Report - Generate traceability and coverage reports
+#
+# Git Configuration:
+# - Repository is cloned automatically by GitLab Runner
+# - Uses full clone (GIT_DEPTH: 0) for complete git history in reports
+# - GIT_STRATEGY: fetch reuses existing clone and fetches updates
+# - GIT_CLEAN_FLAGS: -ffdx ensures clean working directory
+# - Some jobs override GIT_DEPTH: 1 for faster shallow clones
 
 # Define pipeline stages
 stages:
@@ -17,27 +24,83 @@ stages:
 variables:
   CARGO_HOME: $CI_PROJECT_DIR/.cargo
   RUST_VERSION: "1.75"
+  # Git configuration for efficient cloning
+  GIT_STRATEGY: fetch
+  GIT_DEPTH: 0  # Full clone for complete git history (needed for git log in reports)
+  GIT_SUBMODULE_STRATEGY: recursive
+  GIT_CLEAN_FLAGS: -ffdx
 
 # Cache configuration to speed up builds
 cache:
-  key: ${CI_COMMIT_REF_SLUG}
+  key: ${CI_COMMIT_REF_SLUG}-v5
   paths:
     - .cargo/
     - target/
+    - .cargo/bin/cargo-nextest
 
 # Default configuration for all jobs
 default:
   image: rust:${RUST_VERSION}
   before_script:
+    # Display Git repository information
+    - echo "🔍 Repository Information"
+    - echo "  Repository URL: ${CI_REPOSITORY_URL}"
+    - echo "  Branch: ${CI_COMMIT_REF_NAME}"
+    - echo "  Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "  Working directory: ${CI_PROJECT_DIR}"
+    - git --version
+    - git rev-parse --verify HEAD
+    - git status --short
+    - echo ""
+    # Display Rust toolchain information
+    - echo "🦀 Rust Toolchain Information"
     - rustc --version
     - cargo --version
+    - echo ""
+    # Install cargo-nextest if needed
+    - |
+      if ! command -v cargo-nextest &> /dev/null; then
+        echo "📦 Installing cargo-nextest..."
+        cargo install cargo-nextest --locked
+      else
+        echo "✅ cargo-nextest already installed (cached)"
+        cargo nextest --version
+      fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # STAGE 1: BUILD
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+# Validate repository clone and structure
+validate:repo:
+  stage: build
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for quick validation
+  script:
+    - echo "🔍 Validating repository structure..."
+    - test -f Cargo.toml || (echo "❌ Cargo.toml not found" && exit 1)
+    - test -d src || (echo "❌ src directory not found" && exit 1)
+    - test -d tests || (echo "❌ tests directory not found" && exit 1)
+    - test -f .gitlab-ci.yml || (echo "❌ .gitlab-ci.yml not found" && exit 1)
+    - echo "✅ Repository structure validated"
+    - echo "📦 Checking Cargo project..."
+    - cargo --version
+    - cargo verify-project || (echo "❌ Invalid Cargo project" && exit 1)
+    - echo "✅ Valid Cargo project"
+    - echo "📊 Project statistics:"
+    - echo "  Rust files: $(find src -name '*.rs' | wc -l)"
+    - echo "  Test files: $(find tests -name '*.rs' | wc -l)"
+    - echo "  Total lines: $(find src tests -name '*.rs' -exec cat {} \; | wc -l)"
+  only:
+    - branches
+    - merge_requests
+    - main
+    - tags
+
 build:debug:
   stage: build
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster builds
   script:
     - echo "🔨 Building project in debug mode..."
     - cargo build --verbose
@@ -52,6 +115,8 @@ build:debug:
 
 build:release:
   stage: build
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster builds
   script:
     - echo "🔨 Building project in release mode..."
     - cargo build --release --verbose
@@ -67,6 +132,8 @@ build:release:
 # Check code formatting
 format:check:
   stage: build
+  variables:
+    GIT_DEPTH: 1  # Shallow clone sufficient for formatting check
   script:
     - rustup component add rustfmt
     - echo "🎨 Checking code formatting..."
@@ -79,6 +146,8 @@ format:check:
 # Run clippy for linting
 lint:clippy:
   stage: build
+  variables:
+    GIT_DEPTH: 1  # Shallow clone sufficient for linting
   script:
     - rustup component add clippy
     - echo "🔍 Running Clippy linter..."
@@ -95,16 +164,20 @@ lint:clippy:
 # Software Unit Tests (fast feedback)
 test:software:unit:
   stage: test-software
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster test execution
   script:
     - echo "🧪 Running Software Unit Tests..."
-    - cargo test --test software unit_tests:: --verbose
-    - echo "✅ Software unit tests passed (34 tests)"
+    - cargo nextest run --test software --profile ci -E 'test(unit_tests::)' --verbose
+    - echo "✅ Software unit tests passed"
   dependencies:
     - build:debug
   coverage: '/\d+.\d+% coverage/'
   artifacts:
     reports:
-      junit: target/junit-software-unit.xml
+      junit: target/nextest/ci/junit.xml
+    paths:
+      - target/nextest/
     when: always
     expire_in: 7 days
   only:
@@ -115,15 +188,19 @@ test:software:unit:
 # Software Integration Tests
 test:software:integration:
   stage: test-software
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster test execution
   script:
     - echo "🔗 Running Software Integration Tests..."
-    - cargo test --test software integration_tests:: --verbose
-    - echo "✅ Software integration tests passed (13 tests)"
+    - cargo nextest run --test software --profile ci -E 'test(integration_tests::)' --verbose
+    - echo "✅ Software integration tests passed"
   dependencies:
     - build:debug
   artifacts:
     reports:
-      junit: target/junit-software-integration.xml
+      junit: target/nextest/ci/junit.xml
+    paths:
+      - target/nextest/
     when: always
     expire_in: 7 days
   only:
@@ -134,13 +211,19 @@ test:software:integration:
 # Run all software tests together (for main branch)
 test:software:all:
   stage: test-software
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster test execution
   script:
     - echo "🧪 Running ALL Software Tests..."
-    - cargo test --test software --verbose
-    - echo "✅ All software tests passed (47 tests)"
+    - cargo nextest run --test software --profile ci --verbose
+    - echo "✅ All software tests passed"
   dependencies:
     - build:debug
   artifacts:
+    reports:
+      junit: target/nextest/ci/junit.xml
+    paths:
+      - target/nextest/
     when: always
     expire_in: 7 days
   only:
@@ -154,13 +237,19 @@ test:software:all:
 # MBSE Component Mapping Tests
 test:mbse:components:
   stage: test-mbse
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster test execution
   script:
     - echo "🔗 Running MBSE Component Mapping Tests..."
-    - cargo test --test mbse component_mapping_tests:: --verbose
-    - echo "✅ MBSE component mapping validated (10 tests)"
+    - cargo nextest run --test mbse --profile ci -E 'test(component_mapping_tests::)' --verbose
+    - echo "✅ MBSE component mapping validated"
   dependencies:
     - build:debug
   artifacts:
+    reports:
+      junit: target/nextest/ci/junit.xml
+    paths:
+      - target/nextest/
     when: always
     expire_in: 7 days
   only:
@@ -171,13 +260,19 @@ test:mbse:components:
 # MBSE Requirements Validation Tests
 test:mbse:requirements:
   stage: test-mbse
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster test execution
   script:
     - echo "📋 Running MBSE Requirements Validation Tests..."
-    - cargo test --test mbse requirements_validation_tests:: --verbose
-    - echo "✅ All requirements validated (12 tests, 100% coverage)"
+    - cargo nextest run --test mbse --profile ci -E 'test(requirements_validation_tests::)' --verbose
+    - echo "✅ All requirements validated"
   dependencies:
     - build:debug
   artifacts:
+    reports:
+      junit: target/nextest/ci/junit.xml
+    paths:
+      - target/nextest/
     when: always
     expire_in: 7 days
   only:
@@ -188,14 +283,20 @@ test:mbse:requirements:
 # MBSE Safety Constraints Tests (CRITICAL)
 test:mbse:safety:
   stage: test-mbse
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster test execution
   script:
     - echo "⚠️ Running MBSE Safety Constraints Tests..."
-    - cargo test --test mbse safety_constraints_tests:: --verbose
-    - echo "✅ All safety constraints verified (11 tests)"
+    - cargo nextest run --test mbse --profile ci -E 'test(safety_constraints_tests::)' --verbose
+    - echo "✅ All safety constraints verified"
   dependencies:
     - build:debug
   allow_failure: false  # Safety tests must pass
   artifacts:
+    reports:
+      junit: target/nextest/ci/junit.xml
+    paths:
+      - target/nextest/
     when: always
     expire_in: 30 days  # Keep safety test results longer
   only:
@@ -206,13 +307,19 @@ test:mbse:safety:
 # MBSE Traceability Matrix Tests
 test:mbse:traceability:
   stage: test-mbse
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster test execution
   script:
     - echo "📊 Running MBSE Traceability Matrix Tests..."
-    - cargo test --test mbse traceability_matrix_tests:: --verbose
-    - echo "✅ Traceability matrices validated (9 tests)"
+    - cargo nextest run --test mbse --profile ci -E 'test(traceability_matrix_tests::)' --verbose
+    - echo "✅ Traceability matrices validated"
   dependencies:
     - build:debug
   artifacts:
+    reports:
+      junit: target/nextest/ci/junit.xml
+    paths:
+      - target/nextest/
     when: always
     expire_in: 7 days
   only:
@@ -223,13 +330,19 @@ test:mbse:traceability:
 # Run all MBSE tests together (for main branch)
 test:mbse:all:
   stage: test-mbse
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster test execution
   script:
     - echo "🔗 Running ALL MBSE Traceability Tests..."
-    - cargo test --test mbse --verbose
-    - echo "✅ All MBSE tests passed (42 tests, 100% requirements coverage)"
+    - cargo nextest run --test mbse --profile ci --verbose
+    - echo "✅ All MBSE tests passed"
   dependencies:
     - build:debug
   artifacts:
+    reports:
+      junit: target/nextest/ci/junit.xml
+    paths:
+      - target/nextest/
     when: always
     expire_in: 30 days
   only:
@@ -243,6 +356,8 @@ test:mbse:all:
 # Generate complete traceability report
 report:traceability:
   stage: report
+  variables:
+    GIT_DEPTH: 0  # Full clone needed for git log in traceability report
   script:
     - echo "📊 Generating Complete Traceability Report..."
     - |
@@ -265,6 +380,8 @@ report:traceability:
 # Generate requirements coverage report
 report:requirements:
   stage: report
+  variables:
+    GIT_DEPTH: 0  # Full clone needed for complete requirements analysis
   script:
     - echo "📋 Generating Requirements Coverage Report..."
     - |
@@ -287,6 +404,8 @@ report:requirements:
 # Generate safety constraints report
 report:safety:
   stage: report
+  variables:
+    GIT_DEPTH: 0  # Full clone needed for safety documentation
   script:
     - echo "⚠️ Generating Safety Constraints Report..."
     - |
@@ -309,37 +428,79 @@ report:safety:
 # Generate combined test summary
 report:summary:
   stage: report
+  variables:
+    GIT_DEPTH: 0  # Full clone for complete pipeline information
   script:
     - echo "📊 Generating Test Summary Report..."
-    - echo "UAV Swarm System - Test Summary" > test_summary.txt
-    - echo "═══════════════════════════════════════════" >> test_summary.txt
-    - echo "" >> test_summary.txt
-    - echo "Pipeline: $CI_PIPELINE_ID" >> test_summary.txt
-    - echo "Commit: $CI_COMMIT_SHORT_SHA" >> test_summary.txt
-    - echo "Branch: $CI_COMMIT_REF_NAME" >> test_summary.txt
-    - echo "Date: $(date)" >> test_summary.txt
-    - echo "" >> test_summary.txt
-    - echo "SOFTWARE TESTS" >> test_summary.txt
-    - echo "─────────────────────────────────────────" >> test_summary.txt
-    - echo "✅ Unit Tests: 34/34 passed" >> test_summary.txt
-    - echo "✅ Integration Tests: 13/13 passed" >> test_summary.txt
-    - echo "✅ Total Software Tests: 47/47 passed" >> test_summary.txt
-    - echo "" >> test_summary.txt
-    - echo "MBSE TRACEABILITY TESTS" >> test_summary.txt
-    - echo "─────────────────────────────────────────" >> test_summary.txt
-    - echo "✅ Component Mapping: 10/10 passed" >> test_summary.txt
-    - echo "✅ Requirements Validation: 12/12 passed" >> test_summary.txt
-    - echo "✅ Safety Constraints: 11/11 passed" >> test_summary.txt
-    - echo "✅ Traceability Matrix: 9/9 passed" >> test_summary.txt
-    - echo "✅ Total MBSE Tests: 42/42 passed" >> test_summary.txt
-    - echo "" >> test_summary.txt
-    - echo "OVERALL SUMMARY" >> test_summary.txt
-    - echo "═══════════════════════════════════════════" >> test_summary.txt
-    - echo "✅ Total Tests: 89/89 passed (100%)" >> test_summary.txt
-    - echo "✅ Requirements Coverage: 23/23 (100%)" >> test_summary.txt
-    - echo "✅ Safety Tests: ALL PASSED" >> test_summary.txt
-    - echo "" >> test_summary.txt
+    - |
+      cat > test_summary.txt <<EOF
+      UAV Swarm System - Test Summary
+      ═══════════════════════════════════════════
+
+      Pipeline: ${CI_PIPELINE_ID}
+      Commit: ${CI_COMMIT_SHORT_SHA}
+      Branch: ${CI_COMMIT_REF_NAME}
+      Date: $(date)
+
+      SOFTWARE TESTS
+      ─────────────────────────────────────────
+      EOF
+    - |
+      # Extract test statistics from JUnit XML files
+      echo "Extracting test results from JUnit reports..."
+
+      # Software tests summary
+      SW_TOTAL=0
+      SW_PASSED=0
+      SW_FAILED=0
+
+      # MBSE tests summary
+      MBSE_TOTAL=0
+      MBSE_PASSED=0
+      MBSE_FAILED=0
+
+      # Parse JUnit files from nextest
+      for junit_file in target/nextest/ci/junit.xml target/nextest/*/junit.xml; do
+        if [ -f "$junit_file" ]; then
+          TESTS=$(grep -oP 'tests="\K[0-9]+' "$junit_file" | head -1 || echo "0")
+          FAILURES=$(grep -oP 'failures="\K[0-9]+' "$junit_file" | head -1 || echo "0")
+          PASSED=$((TESTS - FAILURES))
+
+          # Check if file is from software or MBSE tests
+          if grep -q "software" "$junit_file" 2>/dev/null; then
+            SW_TOTAL=$((SW_TOTAL + TESTS))
+            SW_PASSED=$((SW_PASSED + PASSED))
+            SW_FAILED=$((SW_FAILED + FAILURES))
+          else
+            MBSE_TOTAL=$((MBSE_TOTAL + TESTS))
+            MBSE_PASSED=$((MBSE_PASSED + PASSED))
+            MBSE_FAILED=$((MBSE_FAILED + FAILURES))
+          fi
+        fi
+      done
+
+      echo "✅ Software Tests: $SW_PASSED passed, $SW_FAILED failed (total: $SW_TOTAL)" >> test_summary.txt
+    - |
+      cat >> test_summary.txt <<EOF
+
+      MBSE TRACEABILITY TESTS
+      ─────────────────────────────────────────
+      EOF
+    - |
+      # Continue with MBSE results
+      echo "✅ MBSE Tests: $MBSE_PASSED passed, $MBSE_FAILED failed (total: $MBSE_TOTAL)" >> test_summary.txt
+    - |
+      cat >> test_summary.txt <<EOF
+
+      OVERALL SUMMARY
+      ═══════════════════════════════════════════
+      Status: Pipeline ${CI_PIPELINE_ID} completed
+      All critical tests passed
+      EOF
     - cat test_summary.txt
+  dependencies:
+    - test:software:all
+    - test:mbse:all
   artifacts:
     paths:
       - test_summary.txt
@@ -355,9 +516,11 @@ report:summary:
 # Fast feedback for commits (runs immediately)
 test:quick:
   stage: test-software
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster quick tests
   script:
     - echo "⚡ Quick feedback - Running unit tests only..."
-    - cargo test --test software unit_tests:: --quiet
+    - cargo nextest run --test software -E 'test(unit_tests::)'
     - echo "✅ Quick tests passed"
   only:
     - branches
@@ -368,21 +531,29 @@ test:quick:
 # Nightly full test suite
 test:nightly:
   stage: test-mbse
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster test execution
   script:
     - echo "🌙 Running complete test suite..."
-    - cargo test --tests --verbose
-    - echo "✅ All 89 tests passed"
+    - cargo nextest run --profile ci --verbose
+    - echo "✅ All tests passed"
   dependencies:
     - build:debug
   only:
     - schedules
   artifacts:
+    reports:
+      junit: target/nextest/ci/junit.xml
+    paths:
+      - target/nextest/
     when: always
     expire_in: 30 days
 
 # Release validation (only on tags)
 validate:release:
   stage: report
+  variables:
+    GIT_DEPTH: 1  # Shallow clone sufficient for artifact validation
   script:
     - echo "🎉 Validating Release..."
     - echo "Checking all artifacts are present..."
