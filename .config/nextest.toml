@@ -26,7 +26,7 @@ test-threads = "num-cpus"
 # Generate JUnit XML report for GitLab integration
 junit.path = "junit.xml"
 # Store JUnit report in ci subdirectory
-junit.store-success-output = false
+junit.store-success-output = true 
 junit.store-failure-output = true
 
 # Slow test timeout (for MBSE tests that may take longer)
