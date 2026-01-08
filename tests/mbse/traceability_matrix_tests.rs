@@ -460,18 +460,24 @@ fn test_complete_traceability_report() {
     println!("  MBSE Layer (SysML v2)           →  Software Layer (Rust)");
     println!("  ─────────────────────────────────────────────────────────────────");
 
-    // Verify each component can be instantiated
+    // Verify each component can be instantiated AND has expected functionality
     let mut verified_components = 0;
 
-    // Test UAV/Drone
-    let drone = Drone::new("UAV-TEST".to_string(), Position::new(0.0, 0.0, 10.0));
+    // Test UAV/Drone - verify creation and basic navigation
+    let mut drone = Drone::new("UAV-TEST".to_string(), Position::new(0.0, 0.0, 10.0));
+    assert_eq!(drone.id, "UAV-TEST");
+    assert_eq!(drone.position.z, 10.0);
+    assert!(matches!(drone.status, DroneStatus::Idle));
     println!("  UAVSwarmManagementSystem        →  main.rs + swarm.rs [✓]");
     println!("  DroneSwarmController            →  swarm.rs::DroneSwarm [✓]");
     verified_components += 2;
 
-    // Test FormationManager
+    // Test FormationManager - verify formation setting and configuration
     let mut manager = FormationManager::new();
+    assert!(manager.separation_distance >= 5.0, "Default separation should be >= 5m");
     manager.set_formation_type(FormationType::Triangle);
+    manager.set_separation_distance(15.0);
+    assert_eq!(manager.separation_distance, 15.0, "Separation distance should be configurable");
     println!("  FormationManagementSubsystem    →  formation.rs::FormationManager [✓]");
     verified_components += 1;
 
@@ -479,18 +485,52 @@ fn test_complete_traceability_report() {
     println!("  MissionExecutionSubsystem       →  mission.rs::MissionExecutor [✓]");
     verified_components += 1;
 
-    // Test Drone
+    // Test Drone - verify state transitions and movement
+    drone.move_to(Position::new(10.0, 10.0, 10.0));
+    assert!(matches!(drone.status, DroneStatus::Navigating), "Drone should transition to Navigating");
+    assert!(drone.target_position.is_some(), "Target position should be set");
     println!("  UAV                             →  drone.rs::Drone [✓]");
     verified_components += 1;
 
-    // Test Position, Velocity, DroneStatus, FormationType
-    let _pos = Position::new(0.0, 0.0, 0.0);
-    let _status = matches!(drone.status, DroneStatus::Idle);
-    let _formation_type = FormationType::Line;
+    // Test Position - verify creation and distance calculation
+    let pos1 = Position::new(0.0, 0.0, 0.0);
+    let pos2 = Position::new(3.0, 4.0, 0.0);
+    let distance = pos1.distance_to(&pos2);
+    assert!((distance - 5.0).abs() < 0.01, "Distance calculation should work correctly");
     println!("  Position                        →  drone.rs::Position [✓]");
+    verified_components += 1;
+
+    // Test Velocity - verify creation, magnitude, and zero velocity
+    use uav_swarm::drone::Velocity;
+    let vel1 = Velocity::new(3.0, 4.0, 0.0);
+    assert_eq!(vel1.vx, 3.0);
+    assert_eq!(vel1.vy, 4.0);
+    assert_eq!(vel1.vz, 0.0);
+    let magnitude = vel1.magnitude();
+    assert!((magnitude - 5.0).abs() < 0.01, "Velocity magnitude should be sqrt(3²+4²) = 5.0");
+    let vel_zero = Velocity::zero();
+    assert_eq!(vel_zero.magnitude(), 0.0, "Zero velocity should have magnitude 0");
+    assert_eq!(drone.velocity.magnitude(), 0.0, "New drone should have zero velocity");
+    println!("  Velocity                        →  drone.rs::Velocity [✓]");
+    verified_components += 1;
+
+    // Test DroneStatus - verify all state variants exist
+    let _idle = DroneStatus::Idle;
+    let _nav = DroneStatus::Navigating;
+    let _form = DroneStatus::InFormation;
+    let _mission = DroneStatus::ExecutingMission;
+    let _error = DroneStatus::Error("test".to_string());
+    assert!(matches!(drone.status, DroneStatus::Navigating), "Status transitions should work");
     println!("  DroneStatus                     →  drone.rs::DroneStatus [✓]");
+    verified_components += 1;
+
+    // Test FormationType - verify all formation types exist and can be applied
+    for formation in [FormationType::Triangle, FormationType::Line, FormationType::VFormation] {
+        manager.set_formation_type(formation.clone());
+        // Verify formation type was set (implicitly tested by not panicking)
+    }
     println!("  FormationType                   →  formation.rs::FormationType [✓]");
-    verified_components += 3;
+    verified_components += 1;
 
     println!();
     println!("  Components Verified: {}/{}", verified_components, component_mappings.len());
