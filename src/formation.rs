@@ -23,7 +23,7 @@ pub struct FormationManager {
     formation_type: FormationType,
     leader_position: Position,
     formation_offsets: HashMap<String, Position>,
-    separation_distance: f64,
+    pub separation_distance: f64,
 }
 
 impl FormationManager {
