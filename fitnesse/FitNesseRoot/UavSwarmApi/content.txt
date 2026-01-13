@@ -1,7 +1,7 @@
 !contents -R2 -g -p -f -h
 
 !***> Test Suite Configuration
-!define FITNESSE_ROOT_PATH {/Users/scrumconseil/dev/claudecode/uav_in_rust/fitnesse}
+!define FITNESSE_ROOT_PATH {../../../fitnesse}
 !define TEST_SYSTEM {slim}
 !path ${FITNESSE_ROOT_PATH}/fixtures/target/fitnesse-fixtures-1.0.0-jar-with-dependencies.jar
 !path fixtures/target/fitnesse-fixtures-1.0.0-jar-with-dependencies.jar
