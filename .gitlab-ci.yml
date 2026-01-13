@@ -22,8 +22,8 @@ stages:
 
 # Global variables
 variables:
-  CARGO_HOME: $CI_PROJECT_DIR/.cargo
-  RUST_VERSION: "1.75"
+  CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+  RUST_VERSION: "1.92"
   # Git configuration for efficient cloning
   GIT_STRATEGY: fetch
   GIT_DEPTH: 0  # Full clone for complete git history (needed for git log in reports)
@@ -56,7 +56,6 @@ default:
     - echo "🦀 Rust Toolchain Information"
     - rustc --version
     - cargo --version
-    - echo ""
     # Install cargo-nextest if needed
     - |
       if ! command -v cargo-nextest &> /dev/null; then
@@ -168,14 +167,16 @@ test:software:unit:
     GIT_DEPTH: 1  # Shallow clone for faster test execution
   script:
     - echo "🧪 Running Software Unit Tests..."
-    - cargo nextest run --test software --profile ci -E 'test(unit_tests::)' --verbose
+#    - mkdir -p target/nextest
+    - cargo nextest run --test software --profile ci -E 'test(unit_tests::)' --verbose 
+    - mv target/nextest/ci/junit.xml target/nextest/junit-software-unit.xml
     - echo "✅ Software unit tests passed"
   dependencies:
     - build:debug
   coverage: '/\d+.\d+% coverage/'
   artifacts:
     reports:
-      junit: target/nextest/ci/junit.xml
+      junit: target/nextest/junit-software-unit.xml
     paths:
       - target/nextest/
     when: always
@@ -193,12 +194,13 @@ test:software:integration:
   script:
     - echo "🔗 Running Software Integration Tests..."
     - cargo nextest run --test software --profile ci -E 'test(integration_tests::)' --verbose
+    - mv target/nextest/ci/junit.xml target/nextest/junit-software-integration.xml
     - echo "✅ Software integration tests passed"
   dependencies:
     - build:debug
   artifacts:
     reports:
-      junit: target/nextest/ci/junit.xml
+      junit: target/nextest/junit-software-integration.xml
     paths:
       - target/nextest/
     when: always
@@ -216,12 +218,13 @@ test:software:all:
   script:
     - echo "🧪 Running ALL Software Tests..."
     - cargo nextest run --test software --profile ci --verbose
+    - mv target/nextest/ci/junit.xml target/nextest/junit-software-all.xml
     - echo "✅ All software tests passed"
   dependencies:
     - build:debug
   artifacts:
     reports:
-      junit: target/nextest/ci/junit.xml
+      junit: target/nextest/junit-software-all.xml
     paths:
       - target/nextest/
     when: always
@@ -242,12 +245,13 @@ test:mbse:components:
   script:
     - echo "🔗 Running MBSE Component Mapping Tests..."
     - cargo nextest run --test mbse --profile ci -E 'test(component_mapping_tests::)' --verbose
+    - mv target/nextest/ci/junit.xml target/nextest/junit-mbse-components.xml
     - echo "✅ MBSE component mapping validated"
   dependencies:
     - build:debug
   artifacts:
     reports:
-      junit: target/nextest/ci/junit.xml
+      junit: target/nextest/junit-mbse-components.xml
     paths:
       - target/nextest/
     when: always
@@ -265,12 +269,13 @@ test:mbse:requirements:
   script:
     - echo "📋 Running MBSE Requirements Validation Tests..."
     - cargo nextest run --test mbse --profile ci -E 'test(requirements_validation_tests::)' --verbose
+    - mv target/nextest/ci/junit.xml target/nextest/junit-mbse-requirements.xml
     - echo "✅ All requirements validated"
   dependencies:
     - build:debug
   artifacts:
     reports:
-      junit: target/nextest/ci/junit.xml
+      junit: target/nextest/junit-mbse-requirements.xml
     paths:
       - target/nextest/
     when: always
@@ -288,13 +293,14 @@ test:mbse:safety:
   script:
     - echo "⚠️ Running MBSE Safety Constraints Tests..."
     - cargo nextest run --test mbse --profile ci -E 'test(safety_constraints_tests::)' --verbose
+    - mv target/nextest/ci/junit.xml target/nextest/junit-mbse-safety.xml
     - echo "✅ All safety constraints verified"
   dependencies:
     - build:debug
   allow_failure: false  # Safety tests must pass
   artifacts:
     reports:
-      junit: target/nextest/ci/junit.xml
+      junit: target/nextest/junit-mbse-safety.xml
     paths:
       - target/nextest/
     when: always
@@ -312,12 +318,13 @@ test:mbse:traceability:
   script:
     - echo "📊 Running MBSE Traceability Matrix Tests..."
     - cargo nextest run --test mbse --profile ci -E 'test(traceability_matrix_tests::)' --verbose
+    - mv target/nextest/ci/junit.xml target/nextest/junit-mbse-traceability.xml
     - echo "✅ Traceability matrices validated"
   dependencies:
     - build:debug
   artifacts:
     reports:
-      junit: target/nextest/ci/junit.xml
+      junit: target/nextest/junit-mbse-traceability.xml
     paths:
       - target/nextest/
     when: always
@@ -335,12 +342,13 @@ test:mbse:all:
   script:
     - echo "🔗 Running ALL MBSE Traceability Tests..."
     - cargo nextest run --test mbse --profile ci --verbose
+    - mv target/nextest/ci/junit.xml target/nextest/junit-mbse-all.xml
     - echo "✅ All MBSE tests passed"
   dependencies:
     - build:debug
   artifacts:
     reports:
-      junit: target/nextest/ci/junit.xml
+      junit: target/nextest/junit-mbse-all.xml
     paths:
       - target/nextest/
     when: always
@@ -446,40 +454,24 @@ report:summary:
       ─────────────────────────────────────────
       EOF
     - |
-      # Extract test statistics from JUnit XML files
-      echo "Extracting test results from JUnit reports..."
-
-      # Software tests summary
-      SW_TOTAL=0
-      SW_PASSED=0
-      SW_FAILED=0
-
-      # MBSE tests summary
-      MBSE_TOTAL=0
-      MBSE_PASSED=0
-      MBSE_FAILED=0
-
-      # Parse JUnit files from nextest
-      for junit_file in target/nextest/ci/junit.xml target/nextest/*/junit.xml; do
-        if [ -f "$junit_file" ]; then
-          TESTS=$(grep -oP 'tests="\K[0-9]+' "$junit_file" | head -1 || echo "0")
-          FAILURES=$(grep -oP 'failures="\K[0-9]+' "$junit_file" | head -1 || echo "0")
-          PASSED=$((TESTS - FAILURES))
-
-          # Check if file is from software or MBSE tests
-          if grep -q "software" "$junit_file" 2>/dev/null; then
-            SW_TOTAL=$((SW_TOTAL + TESTS))
-            SW_PASSED=$((SW_PASSED + PASSED))
-            SW_FAILED=$((SW_FAILED + FAILURES))
-          else
-            MBSE_TOTAL=$((MBSE_TOTAL + TESTS))
-            MBSE_PASSED=$((MBSE_PASSED + PASSED))
-            MBSE_FAILED=$((MBSE_FAILED + FAILURES))
-          fi
-        fi
-      done
-
-      echo "✅ Software Tests: $SW_PASSED passed, $SW_FAILED failed (total: $SW_TOTAL)" >> test_summary.txt
+      # Extract test counts from JUnit reports
+      if [ -f target/nextest/junit-software-unit.xml ]; then
+        UNIT_TESTS=$(grep -oP 'tests="\K[0-9]+' target/nextest/junit-software-unit.xml | head -1 || echo "N/A")
+        UNIT_FAILURES=$(grep -oP 'failures="\K[0-9]+' target/nextest/junit-software-unit.xml | head -1 || echo "0")
+        echo "✅ Unit Tests: $UNIT_TESTS tests, $UNIT_FAILURES failures" >> test_summary.txt
+      fi
+    - |
+      if [ -f target/nextest/junit-software-integration.xml ]; then
+        INTEG_TESTS=$(grep -oP 'tests="\K[0-9]+' target/nextest/junit-software-integration.xml | head -1 || echo "N/A")
+        INTEG_FAILURES=$(grep -oP 'failures="\K[0-9]+' target/nextest/junit-software-integration.xml | head -1 || echo "0")
+        echo "✅ Integration Tests: $INTEG_TESTS tests, $INTEG_FAILURES failures" >> test_summary.txt
+      fi
+    - |
+      if [ -f target/nextest/junit-software-all.xml ]; then
+        TOTAL_SW=$(grep -oP 'tests="\K[0-9]+' target/nextest/junit-software-all.xml | head -1 || echo "N/A")
+        TOTAL_SW_FAIL=$(grep -oP 'failures="\K[0-9]+' target/nextest/junit-software-all.xml | head -1 || echo "0")
+        echo "✅ Total Software Tests: $TOTAL_SW tests, $TOTAL_SW_FAIL failures" >> test_summary.txt
+      fi
     - |
       cat >> test_summary.txt <<EOF
 
@@ -487,8 +479,32 @@ report:summary:
       ─────────────────────────────────────────
       EOF
     - |
-      # Continue with MBSE results
-      echo "✅ MBSE Tests: $MBSE_PASSED passed, $MBSE_FAILED failed (total: $MBSE_TOTAL)" >> test_summary.txt
+      if [ -f target/nextest/junit-mbse-components.xml ]; then
+        COMP_TESTS=$(grep -oP 'tests="\K[0-9]+' target/nextest/junit-mbse-components.xml | head -1 || echo "N/A")
+        echo "✅ Component Mapping: $COMP_TESTS tests" >> test_summary.txt
+      fi
+    - |
+      if [ -f target/nextest/junit-mbse-requirements.xml ]; then
+        REQ_TESTS=$(grep -oP 'tests="\K[0-9]+' target/nextest/junit-mbse-requirements.xml | head -1 || echo "N/A")
+        echo "✅ Requirements Validation: $REQ_TESTS tests" >> test_summary.txt
+      fi
+    - |
+      if [ -f target/nextest/junit-mbse-safety.xml ]; then
+        SAFE_TESTS=$(grep -oP 'tests="\K[0-9]+' target/nextest/junit-mbse-safety.xml | head -1 || echo "N/A")
+        SAFE_FAIL=$(grep -oP 'failures="\K[0-9]+' target/nextest/junit-mbse-safety.xml | head -1 || echo "0")
+        echo "✅ Safety Constraints: $SAFE_TESTS tests, $SAFE_FAIL failures" >> test_summary.txt
+      fi
+    - |
+      if [ -f target/nextest/junit-mbse-traceability.xml ]; then
+        TRACE_TESTS=$(grep -oP 'tests="\K[0-9]+' target/nextest/junit-mbse-traceability.xml | head -1 || echo "N/A")
+        echo "✅ Traceability Matrix: $TRACE_TESTS tests" >> test_summary.txt
+      fi
+    - |
+      if [ -f target/nextest/junit-mbse-all.xml ]; then
+        TOTAL_MBSE=$(grep -oP 'tests="\K[0-9]+' target/nextest/junit-mbse-all.xml | head -1 || echo "N/A")
+        TOTAL_MBSE_FAIL=$(grep -oP 'failures="\K[0-9]+' target/nextest/junit-mbse-all.xml | head -1 || echo "0")
+        echo "✅ Total MBSE Tests: $TOTAL_MBSE tests, $TOTAL_MBSE_FAIL failures" >> test_summary.txt
+      fi
     - |
       cat >> test_summary.txt <<EOF
 
@@ -520,7 +536,7 @@ test:quick:
     GIT_DEPTH: 1  # Shallow clone for faster quick tests
   script:
     - echo "⚡ Quick feedback - Running unit tests only..."
-    - cargo nextest run --test software -E 'test(unit_tests::)'
+    - cargo nextest run --test software -E 'test(unit_tests::)' --no-fail-fast
     - echo "✅ Quick tests passed"
   only:
     - branches
@@ -536,6 +552,7 @@ test:nightly:
   script:
     - echo "🌙 Running complete test suite..."
     - cargo nextest run --profile ci --verbose
+    - mv target/nextest/ci/junit.xml  target/nextest/junit-nightly.xml
     - echo "✅ All tests passed"
   dependencies:
     - build:debug
@@ -543,7 +560,7 @@ test:nightly:
     - schedules
   artifacts:
     reports:
-      junit: target/nextest/ci/junit.xml
+      junit: target/nextest/junit-nightly.xml
     paths:
       - target/nextest/
     when: always
