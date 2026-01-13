@@ -54,6 +54,12 @@ impl DroneSwarm {
         self.mission_executor.execute_mission(mission_id, &mut self.drones).await
     }
 
+    /// Execute a single tick of mission execution
+    /// Returns Ok(true) if mission is still running, Ok(false) if completed
+    pub fn tick_mission_by_id(&mut self, mission_id: &str) -> Result<bool, String> {
+        self.mission_executor.tick_mission_execution(mission_id, &mut self.drones)
+    }
+
     pub async fn execute_mission(&mut self, target: Position) {
         let drone_ids: Vec<String> = self.drones.keys().cloned().collect();
         

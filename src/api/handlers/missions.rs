@@ -95,15 +95,32 @@ pub async fn create_mission(
     let swarm_state = state.swarm.clone();
     let mission_id_clone = mission_id.clone();
     tokio::spawn(async move {
-        // Note: execute_mission is a long-running operation that holds the lock
-        let result = {
-            let mut swarm = swarm_state.lock().await;
+        // Execute mission in ticks, releasing lock between each tick
+        loop {
+            // Acquire lock, execute one tick, then release lock
+            let result = {
+                let mut swarm = swarm_state.lock().await;
+                swarm.tick_mission_by_id(&mission_id_clone)
+            };
 
-            // Execute the mission using the swarm method to avoid borrow issues
-            swarm.execute_mission_by_id(&mission_id_clone).await
-        };
-
-        let _ = result;
+            match result {
+                Ok(true) => {
+                    // Mission still running, continue
+                    // Sleep before next tick to allow other tasks to acquire lock
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                }
+                Ok(false) => {
+                    // Mission completed
+                    println!("Mission {} completed", mission_id_clone);
+                    break;
+                }
+                Err(e) => {
+                    // Mission failed
+                    println!("Mission {} failed: {}", mission_id_clone, e);
+                    break;
+                }
+            }
+        }
     });
 
     // Return mission info immediately

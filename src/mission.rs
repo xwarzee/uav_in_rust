@@ -226,4 +226,82 @@ impl MissionExecutor {
             Err("Mission not found".to_string())
         }
     }
+
+    /// Execute a single tick of mission execution
+    /// Returns Ok(true) if mission is still running, Ok(false) if completed, Err if failed
+    pub fn tick_mission_execution(
+        &mut self,
+        mission_id: &str,
+        drones: &mut HashMap<String, Drone>,
+    ) -> Result<bool, String> {
+        let mission = self.active_missions.get(mission_id)
+            .ok_or_else(|| "Mission not found".to_string())?;
+
+        // Check mission status
+        match mission.status {
+            MissionStatus::NotStarted => {
+                return Err("Mission not started".to_string());
+            }
+            MissionStatus::Completed => {
+                return Ok(false);
+            }
+            MissionStatus::Failed(ref reason) => {
+                return Err(reason.clone());
+            }
+            MissionStatus::InProgress => {
+                // Continue execution
+            }
+        }
+
+        let current_target = mission.get_current_target();
+        let assigned_drones = mission.assigned_drones.clone();
+
+        if let Some(target) = current_target {
+            // Update drone positions and check if all arrived
+            let mut all_arrived = true;
+
+            for drone_id in &assigned_drones {
+                if let Some(drone) = drones.get_mut(drone_id) {
+                    // Set status if not already set
+                    if drone.status != DroneStatus::ExecutingMission {
+                        drone.status = DroneStatus::ExecutingMission;
+                        drone.move_to(target);
+                    }
+
+                    drone.update_position(0.1);
+
+                    let distance_to_target = drone.position.distance_to(&target);
+                    if distance_to_target > 1.0 {
+                        all_arrived = false;
+                    }
+                }
+            }
+
+            // If all drones arrived at waypoint, advance to next
+            if all_arrived {
+                println!("All drones reached waypoint: ({:.1}, {:.1}, {:.1})",
+                        target.x, target.y, target.z);
+
+                if let Some(mission) = self.active_missions.get_mut(mission_id) {
+                    if !mission.advance_waypoint() {
+                        // Mission completed, set drones back to idle
+                        for drone_id in &assigned_drones {
+                            if let Some(drone) = drones.get_mut(drone_id) {
+                                drone.status = DroneStatus::Idle;
+                            }
+                        }
+                        return Ok(false);
+                    }
+                }
+            }
+        } else {
+            // No more waypoints, complete mission
+            if let Some(mission) = self.active_missions.get_mut(mission_id) {
+                mission.status = MissionStatus::Completed;
+            }
+            return Ok(false);
+        }
+
+        Ok(true)
+    }
 }
