@@ -1,0 +1,109 @@
+!contents -R2 -g -p -f -h
+
+!***> Imports
+!|import|
+|uav.fixtures|
+***!
+
+!1 Mission Execution Tests
+
+These tests validate the mission execution endpoints of the UAV API.
+
+!2 Test 1: List Missions (Initially Empty or Existing)
+
+|script|mission fixture          |
+|list missions                   |
+|check|status code        |200  |
+
+!2 Test 2: Create MoveTo Mission
+
+|script|mission fixture                     |
+|create move to mission;   |100|200|50      |
+|check|status code                   |200   |
+|check|response contains|id                |true|
+|check|response contains|mission_type      |true|
+|check|response contains|status            |true|
+|check|number of assigned drones     |3    |
+
+!2 Test 3: Get Mission Details
+
+|script|mission fixture                     |
+|create move to mission;   |50|100|25       |
+|check|status code                   |200   |
+|$missionId=|mission id                    |
+|get mission detail        |$missionId      |
+|check|status code                   |200   |
+|check|response contains|mission_type      |true|
+|check|response contains|status            |true|
+
+!2 Test 4: Get Mission Status
+
+|script|mission fixture                     |
+|create move to mission;   |30|60|15        |
+|check|status code                   |200   |
+|$missionId=|mission id                    |
+|get mission status        |$missionId      |
+|check|status code                   |200   |
+|check|response contains|mission_id        |true|
+|check|response contains|status            |true|
+|check|response contains|current_waypoint  |true|
+|check|response contains|total_waypoints   |true|
+
+!2 Test 5: Create Search Mission
+
+|script|mission fixture                        |
+|create search mission;    |100|100|50|30       |
+|check|status code                      |200   |
+|check|response contains|id                   |true|
+|check|mission status                   |in_progress|
+
+!2 Test 6: Cancel Mission
+
+|script|mission fixture                     |
+|create move to mission;   |80|160|40       |
+|check|status code                   |200   |
+|$missionId=|mission id                    |
+|cancel mission            |$missionId      |
+|check|status code                   |200   |
+|check|response contains|message     |true  |
+
+!2 Test 7: Multiple Missions
+
+|script|mission fixture                     |
+|create move to mission;   |10|20|5         |
+|check|status code                   |200   |
+|create move to mission;   |30|40|15        |
+|check|status code                   |200   |
+|create move to mission;   |50|60|25        |
+|check|status code                   |200   |
+|list missions                             |
+|check|number of missions at least|3 |true  |
+
+!2 Test 8: Invalid Mission (Missing Drones)
+
+This test assumes we can't create a mission without available drones.
+For now, we verify that creation with drones works.
+
+|script|mission fixture                     |
+|create move to mission;   |100|200|50      |
+|check|status code                   |200   |
+|check|number of assigned drones     |3    |
+
+!2 Test 9: Get Non-Existent Mission
+
+|script|mission fixture                     |
+|get mission detail       |invalid_mission_id|
+|check|status code                   |404   |
+
+!2 Test 10: Mission Lifecycle
+
+|script|mission fixture                        |
+|create move to mission;   |25|50|10            |
+|check|status code                      |200   |
+|$missionId=|mission id                        |
+|check|mission status                   |in_progress|
+|get mission status        |$missionId          |
+|check|status code                      |200   |
+|check|total waypoints                  |1     |
+|cancel mission            |$missionId          |
+|check|status code                      |200   |

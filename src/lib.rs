@@ -7,3 +7,4 @@ pub mod drone;
 pub mod formation;
 pub mod mission;
 pub mod swarm;
+pub mod api;

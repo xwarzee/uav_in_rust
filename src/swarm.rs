@@ -35,14 +35,23 @@ impl DroneSwarm {
     pub fn set_formation(&mut self, formation_type: &str) {
         if let Some(formation) = FormationType::from_str(formation_type) {
             self.formation_manager.set_formation_type(formation);
-            
+
             // Move all drones to formation positions
             self.formation_manager.update_formation(&mut self.drones);
-            
+
             println!("Formation changed to: {}", formation_type);
         } else {
             println!("Unknown formation type: {}. Available: triangle, line, v_formation", formation_type);
         }
+    }
+
+    pub fn set_separation_distance(&mut self, distance: f64) {
+        self.formation_manager.set_separation_distance(distance);
+        self.formation_manager.update_formation(&mut self.drones);
+    }
+
+    pub async fn execute_mission_by_id(&mut self, mission_id: &str) -> Result<(), String> {
+        self.mission_executor.execute_mission(mission_id, &mut self.drones).await
     }
 
     pub async fn execute_mission(&mut self, target: Position) {

@@ -1,0 +1,30 @@
+# FitNesse generated files
+*.jar
+ErrorLogs/
+RecentChanges/
+PageHistory/
+files/
+
+# FitNesse wiki modifications
+FitNesseRoot/RecentChanges/
+FitNesseRoot/ErrorLogs/
+FitNesseRoot/files/testResults/
+FitNesseRoot/files/testProgress/
+FitNesseRoot/**/PageHistory/
+
+# Maven build artifacts
+fixtures/target/
+fixtures/.classpath
+fixtures/.project
+fixtures/.settings/
+
+# IDE files
+*.iml
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

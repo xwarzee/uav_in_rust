@@ -1,0 +1,70 @@
+!contents -R2 -g -p -f -h
+
+!***> Imports
+!|import|
+|uav.fixtures|
+***!
+
+!1 Drone Operations Tests
+
+These tests validate the drone-specific endpoints of the UAV API.
+
+!2 Test 1: List All Drones
+
+|script|drone fixture             |
+|list drones                      |
+|check|status code         |200  |
+|check|number of drones    |3    |
+
+!2 Test 2: Get Specific Drone Details
+
+|script|drone fixture                  |
+|get drone detail       |drone_1      |
+|check|status code            |200   |
+|check|drone id               |drone_1|
+|check|response contains|position    |true|
+|check|response contains|velocity    |true|
+|check|response contains|status      |true|
+|check|max speed              |5.0   |
+
+!2 Test 3: Get Drone Status
+
+|script|drone fixture                  |
+|get drone status       |drone_1      |
+|check|status code            |200   |
+|check|drone id               |drone_1|
+|check|response contains|position    |true|
+|check|response contains|velocity    |true|
+
+!2 Test 4: Update Drone Target Position
+
+|script|drone fixture                        |
+|update drone target;|drone_1|50|100|25     |
+|check|status code                   |200   |
+|check|response contains|message    |true|
+
+!2 Test 5: Verify All Drones Exist
+
+|script|drone fixture                  |
+|get drone detail       |drone_1      |
+|check|status code            |200   |
+|get drone detail       |drone_2      |
+|check|status code            |200   |
+|get drone detail       |drone_3      |
+|check|status code            |200   |
+
+!2 Test 6: Invalid Drone ID Returns 404
+
+|script|drone fixture                    |
+|get drone detail       |invalid_drone  |
+|check|status code            |404     |
+
+!2 Test 7: Multiple Target Updates
+
+|script|drone fixture                          |
+|update drone target;|drone_1|10|20|5         |
+|check|status code                     |200   |
+|update drone target;|drone_1|30|40|15        |
+|check|status code                     |200   |
+|update drone target;|drone_1|50|60|25        |
+|check|status code                     |200   |

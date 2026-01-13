@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
-use uuid::Uuid;
+use std::time::Instant;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Position {
     pub x: f64,
     pub y: f64,
@@ -40,7 +40,7 @@ impl Position {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Velocity {
     pub vx: f64,
     pub vy: f64,
@@ -61,7 +61,7 @@ impl Velocity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum DroneStatus {
     Idle,
     Navigating,
@@ -146,7 +146,7 @@ impl Drone {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DroneStatusInfo {
     pub id: String,
     pub position: Position,

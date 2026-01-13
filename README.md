@@ -9,6 +9,9 @@ A minimal Rust application for managing collaborative navigation, formation mana
 - **Collaborative Navigation**: Coordinated movement and collision avoidance
 - **Mission Execution**: MoveTo, Patrol, and Search missions
 - **Real-time Monitoring**: Live status updates for all drones
+- **REST API**: Complete HTTP API with OpenAPI/Swagger documentation
+- **WebSocket Streaming**: Real-time drone telemetry updates
+- **FitNesse Testing**: Comprehensive automated acceptance test suite
 
 ## Usage
 
@@ -33,13 +36,84 @@ cargo run -- formation v_formation
 cargo run -- mission 100.0 50.0 20.0
 ```
 
+### Run REST API Server
+
+```bash
+cargo run -- serve --port 8080
+```
+
+Access the interactive API documentation at: http://localhost:8080/swagger-ui/
+
+## REST API Testing
+
+### Option 1: Swagger UI (Interactive)
+1. Start server: `cargo run -- serve --port 8080`
+2. Open http://localhost:8080/swagger-ui/
+3. Try endpoints interactively
+
+### Option 2: FitNesse Acceptance Tests (Recommended)
+
+**Quick Start:**
+```bash
+# Terminal 1: Start API server
+cargo run -- serve --port 8080
+
+# Terminal 2: Build fixtures and run FitNesse
+cd fitnesse/fixtures && mvn clean package
+cd .. && ./run-fitnesse.sh
+```
+
+Then open http://localhost:8000/UavSwarmApi to run the test suite.
+
+**Test Coverage:**
+- **SwarmTests**: 5 tests for swarm management
+- **DroneTests**: 7 tests for drone operations
+- **FormationTests**: 10 tests for formation control
+- **MissionTests**: 10 tests for mission execution
+
+**Total: 35+ automated acceptance tests**
+
+For detailed FitNesse documentation, see [fitnesse/README.md](fitnesse/README.md)
+
+### Option 3: cURL (Command Line)
+
+```bash
+# Get swarm status
+curl http://localhost:8080/api/swarm
+
+# Change formation
+curl -X POST http://localhost:8080/api/formations/current \
+  -H "Content-Type: application/json" \
+  -d '{"formation_type":"triangle"}'
+
+# Create mission
+curl -X POST http://localhost:8080/api/missions \
+  -H "Content-Type: application/json" \
+  -d '{"type":"MoveTo","params":{"target":{"x":100,"y":200,"z":50}}}'
+```
+
 ## Architecture
 
-- `drone.rs` - Core drone physics and state management
-- `formation.rs` - Formation patterns and positioning
-- `mission.rs` - Mission types and execution logic
-- `swarm.rs` - High-level swarm coordination
-- `main.rs` - CLI interface and application entry point
+### Core Modules
+- `src/drone.rs` - Core drone physics and state management
+- `src/formation.rs` - Formation patterns and positioning
+- `src/mission.rs` - Mission types and execution logic
+- `src/swarm.rs` - High-level swarm coordination
+- `src/main.rs` - CLI interface and application entry point
+
+### REST API
+- `src/api/` - Complete REST API implementation
+  - `handlers/` - HTTP endpoint handlers
+  - `models/` - Request/response DTOs
+  - `routes/` - Route configuration
+  - `websocket/` - Real-time WebSocket support
+  - `server.rs` - Actix-web server setup
+  - `docs.rs` - OpenAPI specification
+
+### Testing
+- `fitnesse/` - FitNesse acceptance test suite
+  - `FitNesseRoot/UavSwarmApi/` - Test wiki pages
+  - `fixtures/` - Java test fixtures for REST API
 
 ### Documentation
 

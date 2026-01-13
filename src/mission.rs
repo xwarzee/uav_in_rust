@@ -2,14 +2,14 @@ use crate::drone::{Position, Drone, DroneStatus};
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum MissionType {
     MoveTo(Position),
     Patrol(Vec<Position>),
     Search(Position, f64), // center position and radius
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum MissionStatus {
     NotStarted,
     InProgress,
@@ -88,7 +88,7 @@ impl Mission {
 }
 
 pub struct MissionExecutor {
-    active_missions: HashMap<String, Mission>,
+    pub active_missions: HashMap<String, Mission>,
     mission_counter: u32,
 }
 

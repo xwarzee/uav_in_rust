@@ -1,7 +1,7 @@
 use crate::drone::{Position, Drone};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FormationType {
     Triangle,
     Line,
@@ -20,7 +20,7 @@ impl FormationType {
 }
 
 pub struct FormationManager {
-    formation_type: FormationType,
+    pub formation_type: FormationType,
     leader_position: Position,
     formation_offsets: HashMap<String, Position>,
     pub separation_distance: f64,

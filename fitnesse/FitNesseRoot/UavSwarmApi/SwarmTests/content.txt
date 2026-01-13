@@ -1,0 +1,60 @@
+!contents -R2 -g -p -f -h
+
+!***> Imports
+!|import|
+|uav.fixtures|
+***!
+
+!1 Swarm Management Tests
+
+These tests validate the swarm management endpoints of the UAV API.
+
+!2 Test 1: Get Swarm Status
+
+|script|swarm fixture               |
+|get swarm status                   |
+|check|status code            |200  |
+|check|response contains|drone_count|true|
+|check|drone count              |3   |
+
+!2 Test 2: Start Simulation
+
+|script|swarm fixture                    |
+|start simulation                        |
+|check|status code                 |200  |
+|check|message|Simulation started       |
+|get swarm status                        |
+|check|simulation running          |true |
+
+!2 Test 3: Stop Simulation
+
+|script|swarm fixture                   |
+|stop simulation                        |
+|check|status code                |200  |
+|check|message|Simulation stopped      |
+|get swarm status                       |
+|check|simulation running         |false|
+
+!2 Test 4: Verify Swarm Status Fields
+
+|script|swarm fixture                      |
+|get swarm status                          |
+|check|status code                   |200  |
+|check|response contains|drone_count       |true|
+|check|response contains|simulation_running|true|
+|check|response contains|formation_stable  |true|
+|check|response contains|drones            |true|
+
+!2 Test 5: Complete Simulation Lifecycle
+
+|script|swarm fixture                          |
+|get swarm status                              |
+|check|simulation running              |false  |
+|start simulation                              |
+|check|status code                     |200    |
+|get swarm status                              |
+|check|simulation running              |true   |
+|stop simulation                               |
+|check|status code                     |200    |
+|get swarm status                              |
+|check|simulation running              |false  |

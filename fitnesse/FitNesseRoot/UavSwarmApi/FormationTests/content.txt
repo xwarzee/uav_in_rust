@@ -1,0 +1,97 @@
+!contents -R2 -g -p -f -h
+
+!***> Imports
+!|import|
+|uav.fixtures|
+***!
+
+!1 Formation Control Tests
+
+These tests validate the formation control endpoints of the UAV API.
+
+!2 Test 1: List Available Formations
+
+|script|formation fixture                       |
+|list formations                                |
+|check|status code                        |200  |
+|check|number of available formations     |3    |
+|check|formation available|triangle   |true    |
+|check|formation available|line       |true    |
+|check|formation available|v_formation|true    |
+
+!2 Test 2: Get Current Formation
+
+|script|formation fixture                |
+|get current formation                   |
+|check|status code                 |200  |
+|check|response contains|formation_type      |true|
+|check|response contains|separation_distance |true|
+|check|response contains|is_stable           |true|
+
+!2 Test 3: Change to Triangle Formation
+
+|script|formation fixture                |
+|set formation          |triangle        |
+|check|status code                 |200  |
+|check|message|Formation changed to triangle|
+|get current formation                   |
+|check|formation type              |triangle|
+
+!2 Test 4: Change to Line Formation
+
+|script|formation fixture                |
+|set formation          |line            |
+|check|status code                 |200  |
+|check|message|Formation changed to line|
+|get current formation                   |
+|check|formation type              |line  |
+
+!2 Test 5: Change to V-Formation
+
+|script|formation fixture                |
+|set formation          |v_formation     |
+|check|status code                 |200  |
+|get current formation                   |
+|check|formation type              |vformation|
+
+!2 Test 6: Update Separation Distance
+
+|script|formation fixture                    |
+|get current formation                       |
+|update separation distance         |15.0     |
+|check|status code                     |200   |
+|get current formation                       |
+|check|separation distance             |15.0  |
+
+!2 Test 7: Invalid Formation Type
+
+|script|formation fixture                |
+|set formation          |invalid         |
+|check|status code                 |400  |
+
+!2 Test 8: Invalid Separation Distance (Too Small)
+
+|script|formation fixture                |
+|update separation distance     |2.0     |
+|check|status code                 |400  |
+
+!2 Test 9: Invalid Separation Distance (Too Large)
+
+|script|formation fixture                |
+|update separation distance     |100.0   |
+|check|status code                 |400  |
+
+!2 Test 10: Formation Lifecycle
+
+|script|formation fixture                    |
+|set formation          |triangle            |
+|check|status code                     |200   |
+|update separation distance         |20.0     |
+|check|status code                     |200   |
+|get current formation                       |
+|check|formation type                  |triangle|
+|check|separation distance             |20.0  |
+|set formation          |line                |
+|check|status code                     |200   |
+|get current formation                       |
+|check|formation type                  |line  |
