@@ -52,4 +52,13 @@ echo ""
 echo "Press Ctrl+C to stop FitNesse"
 echo ""
 
-java -jar "$FITNESSE_JAR" -p $FITNESSE_PORT -d "$SCRIPT_DIR"
+# java -jar "$FITNESSE_JAR" -p $FITNESSE_PORT -d "$SCRIPT_DIR"
+# use the FitNessee REST API to launch the main tests suite: UavSwarmApi
+
+java -jar "$FITNESSE_JAR" -p $FITNESSE_PORT -d "$SCRIPT_DIR" -c "UavSwarmApi?suite&format=xml" > $1.tmp
+sed '1d' $1.tmp > $1.xml
+rm $1.tmp
+
+java -jar "$FITNESSE_JAR" -p $FITNESSE_PORT -d "$SCRIPT_DIR" -c "UavSwarmApi?suite&format=html" > $1.tmp
+sed '1d' $1.tmp > $1.html
+rm $1.tmp
