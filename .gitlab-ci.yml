@@ -16,8 +16,8 @@
 # Define pipeline stages
 stages:
   - build
-  - test-acceptance
   - test-software
+  - test-acceptance
   - test-mbse
   - report
 
@@ -239,7 +239,6 @@ test:software:acceptance:
     GIT_DEPTH: 1  # Shallow clone for faster test execution
   before_script:
     - apt-get update && apt-get -y install maven # openjdk-21-jdk installé avec maven
-#    - apt-get -y install xsltproc # used to convert FitNesse XML tests results to JUnit XML
   script:
     - echo "🧪 Running Acceptance Tests..."
     - cargo run -- serve --port 8080 &
@@ -255,10 +254,7 @@ test:software:acceptance:
         echo "Tentative $i/30..."
         sleep 2
       done
-#    - mkdir target && ./run-fitnesse.sh target/fitnesse-results
-#    - xsltproc fitnesse-to-junit.xsl target/fitnesse-results.xml > target/junit-software-acceptance.xml
     - mvn clean test -Pfitnesse-tests
-    - ls -l target
     - echo "✅ All Acceptance tests passed"
   dependencies:
     - build:debug
