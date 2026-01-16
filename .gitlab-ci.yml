@@ -16,6 +16,7 @@
 # Define pipeline stages
 stages:
   - build
+  - test-acceptance
   - test-software
   - test-mbse
   - report
@@ -44,10 +45,10 @@ default:
   before_script:
     # Display Git repository information
     - echo "🔍 Repository Information"
-    - echo "  Repository URL: ${CI_REPOSITORY_URL}"
-    - echo "  Branch: ${CI_COMMIT_REF_NAME}"
-    - echo "  Commit: ${CI_COMMIT_SHORT_SHA}"
-    - echo "  Working directory: ${CI_PROJECT_DIR}"
+    - echo "  Repository URL:" "${CI_REPOSITORY_URL}"
+    - echo "  Branch:" "${CI_COMMIT_REF_NAME}"
+    - echo "  Commit:" "${CI_COMMIT_SHORT_SHA}"
+    - echo "  Working directory:" "${CI_PROJECT_DIR}"
     - git --version
     - git rev-parse --verify HEAD
     - git status --short
@@ -87,9 +88,9 @@ validate:repo:
     - cargo verify-project || (echo "❌ Invalid Cargo project" && exit 1)
     - echo "✅ Valid Cargo project"
     - echo "📊 Project statistics:"
-    - echo "  Rust files: $(find src -name '*.rs' | wc -l)"
-    - echo "  Test files: $(find tests -name '*.rs' | wc -l)"
-    - echo "  Total lines: $(find src tests -name '*.rs' -exec cat {} \; | wc -l)"
+    - echo "  Rust files:" "$(find src -name '*.rs' | wc -l)"
+    - echo "  Test files:" "$(find tests -name '*.rs' | wc -l)"
+    - echo "  Total lines:" "$(find src tests -name '*.rs' -exec cat {} \; | wc -l)"
   only:
     - branches
     - merge_requests
@@ -167,7 +168,6 @@ test:software:unit:
     GIT_DEPTH: 1  # Shallow clone for faster test execution
   script:
     - echo "🧪 Running Software Unit Tests..."
-#    - mkdir -p target/nextest
     - cargo nextest run --test software --profile ci -E 'test(unit_tests::)' --verbose 
     - mv target/nextest/ci/junit.xml target/nextest/junit-software-unit.xml
     - echo "✅ Software unit tests passed"
@@ -178,7 +178,7 @@ test:software:unit:
     reports:
       junit: target/nextest/junit-software-unit.xml
     paths:
-      - target/nextest/
+      - target/nextest/junit-software-unit.xml
     when: always
     expire_in: 7 days
   only:
@@ -202,7 +202,7 @@ test:software:integration:
     reports:
       junit: target/nextest/junit-software-integration.xml
     paths:
-      - target/nextest/
+      - target/nextest/junit-software-integration.xml
     when: always
     expire_in: 7 days
   only:
@@ -226,13 +226,53 @@ test:software:all:
     reports:
       junit: target/nextest/junit-software-all.xml
     paths:
-      - target/nextest/
+      - target/nextest/junit-software-all.xml
     when: always
     expire_in: 7 days
   only:
     - main
     - tags
 
+test:software:acceptance:
+  stage: test-acceptance
+  variables:
+    GIT_DEPTH: 1  # Shallow clone for faster test execution
+  before_script:
+    - apt-get update && apt-get -y install maven # openjdk-21-jdk installé avec maven
+#    - apt-get -y install xsltproc # used to convert FitNesse XML tests results to JUnit XML
+  script:
+    - echo "🧪 Running Acceptance Tests..."
+    - cargo run -- serve --port 8080 &
+    - cd fitnesse/fixtures && mvn clean install
+    - cd ..
+    - |
+      echo "Waiting REST server is ready..."
+      for i in {1..30}; do
+        if curl -s http://localhost:8080/health > /dev/null; then
+          echo "Serveur prêt !"
+          break
+        fi
+        echo "Tentative $i/30..."
+        sleep 2
+      done
+#    - mkdir target && ./run-fitnesse.sh target/fitnesse-results
+#    - xsltproc fitnesse-to-junit.xsl target/fitnesse-results.xml > target/junit-software-acceptance.xml
+    - mvn clean test -Pfitnesse-tests
+    - ls -l target
+    - echo "✅ All Acceptance tests passed"
+  dependencies:
+    - build:debug
+  artifacts:
+    reports:
+      junit: fitnesse/target/surefire-reports/TEST-FitNesseRunnerTest.xml
+    expose_as: 'Detailled FitNesse Reports'
+    paths:
+      - fitnesse/target/fitnesse-reports/
+    when: always
+    expire_in: 7 days
+  only:
+    - main
+    - tags
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # STAGE 3: MBSE TRACEABILITY TESTS (Model-Based Systems Engineering)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
