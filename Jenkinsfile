@@ -126,42 +126,38 @@ pipeline {
             }
         }
 
-        stage('Build Binaries') {
-            parallel {
-                stage('Build Debug') {
-                    steps {
-                        script {
-                            echo "🔨 Building project in debug mode..."
-                            sh 'cargo build --verbose'
-                            echo "✅ Debug build completed"
-                        }
-                    }
-                    post {
-                        success {
-                            archiveArtifacts artifacts: 'target/debug/uav_swarm', fingerprint: true
-                        }
-                    }
+        stage('Build Debug') {
+            steps {
+                script {
+                    echo "🔨 Building project in debug mode..."
+                    sh 'cargo build --verbose'
+                    echo "✅ Debug build completed"
                 }
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'target/debug/uav_swarm', fingerprint: true
+                }
+            }
+        }
 
-                stage('Build Release') {
-                    when {
-                        anyOf {
-                            branch 'main'
-                            tag pattern: '*', comparator: 'REGEXP'
-                        }
-                    }
-                    steps {
-                        script {
-                            echo "🔨 Building project in release mode..."
-                            sh 'cargo build --release --verbose'
-                            echo "✅ Release build completed"
-                        }
-                    }
-                    post {
-                        success {
-                            archiveArtifacts artifacts: 'target/release/uav_swarm', fingerprint: true, onlyIfSuccessful: true
-                        }
-                    }
+        stage('Build Release') {
+            when {
+                anyOf {
+                    branch 'main'
+                    tag pattern: '*', comparator: 'REGEXP'
+                }
+            }
+            steps {
+                script {
+                    echo "🔨 Building project in release mode..."
+                    sh 'cargo build --release --verbose'
+                    echo "✅ Release build completed"
+                }
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'target/release/uav_swarm', fingerprint: true, onlyIfSuccessful: true
                 }
             }
         }
