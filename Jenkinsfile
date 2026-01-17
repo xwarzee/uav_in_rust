@@ -8,8 +8,9 @@
 // 5. Report - Generate traceability and coverage reports
 //
 // Prerequisites:
-// - Podman must be installed on the Jenkins agent
-// - Jenkins user must have permissions to run Podman commands
+// - Rust toolchain must be installed on the Jenkins agent
+// - Maven and Java must be installed on the Jenkins agent
+// - Jenkins user must have permissions to run cargo, maven, and java commands
 
 pipeline {
     agent any
@@ -28,37 +29,11 @@ pipeline {
     environment {
         CARGO_HOME = "${WORKSPACE}/.cargo"
         RUST_VERSION = "1.92"
-        RUST_IMAGE = "docker.io/library/rust:1.92"
-        CONTAINER_NAME = "jenkins-rust-${BUILD_NUMBER}"
         // Git configuration
         GIT_DEPTH = '0'
     }
 
     stages {
-        stage('Container Setup') {
-            steps {
-                script {
-                    echo "🐳 Setting up Podman container..."
-                    sh '''
-                        # Pull Rust image
-                        podman pull ${RUST_IMAGE}
-
-                        # Create and start container with necessary volumes
-                        podman run -dit \
-                            --name ${CONTAINER_NAME} \
-                            -v ${WORKSPACE}:/workspace:Z \
-                            -v ${WORKSPACE}/.cargo:/usr/local/cargo:Z \
-                            -w /workspace \
-                            --network host \
-                            ${RUST_IMAGE} \
-                            /bin/bash
-
-                        echo "✅ Podman container ${CONTAINER_NAME} created and running"
-                    '''
-                }
-            }
-        }
-
         stage('Setup') {
             steps {
                 script {
@@ -72,20 +47,18 @@ pipeline {
                     sh 'git status --short'
                     echo ""
                     echo "🦀 Rust Toolchain Information"
-                    sh 'podman exec ${CONTAINER_NAME} rustc --version'
-                    sh 'podman exec ${CONTAINER_NAME} cargo --version'
+                    sh 'rustc --version'
+                    sh 'cargo --version'
 
                     // Install cargo-nextest if not cached
                     sh '''
-                        podman exec ${CONTAINER_NAME} bash -c '
-                            if ! command -v cargo-nextest &> /dev/null; then
-                                echo "📦 Installing cargo-nextest..."
-                                cargo install cargo-nextest --locked
-                            else
-                                echo "✅ cargo-nextest already installed (cached)"
-                                cargo nextest --version
-                            fi
-                        '
+                        if ! command -v cargo-nextest &> /dev/null; then
+                            echo "📦 Installing cargo-nextest..."
+                            cargo install cargo-nextest --locked
+                        else
+                            echo "✅ cargo-nextest already installed (cached)"
+                            cargo nextest --version
+                        fi
                     '''
                 }
             }
@@ -102,20 +75,18 @@ pipeline {
                         script {
                             echo "🔍 Validating repository structure..."
                             sh '''
-                                podman exec ${CONTAINER_NAME} bash -c '
-                                    test -f Cargo.toml || (echo "❌ Cargo.toml not found" && exit 1)
-                                    test -d src || (echo "❌ src directory not found" && exit 1)
-                                    test -d tests || (echo "❌ tests directory not found" && exit 1)
-                                    echo "✅ Repository structure validated"
-                                    echo "📦 Checking Cargo project..."
-                                    cargo --version
-                                    cargo verify-project || (echo "❌ Invalid Cargo project" && exit 1)
-                                    echo "✅ Valid Cargo project"
-                                    echo "📊 Project statistics:"
-                                    echo "  Rust files: $(find src -name '"'"'*.rs'"'"' | wc -l)"
-                                    echo "  Test files: $(find tests -name '"'"'*.rs'"'"' | wc -l)"
-                                    echo "  Total lines: $(find src tests -name '"'"'*.rs'"'"' -exec cat {} \\; | wc -l)"
-                                '
+                                test -f Cargo.toml || (echo "❌ Cargo.toml not found" && exit 1)
+                                test -d src || (echo "❌ src directory not found" && exit 1)
+                                test -d tests || (echo "❌ tests directory not found" && exit 1)
+                                echo "✅ Repository structure validated"
+                                echo "📦 Checking Cargo project..."
+                                cargo --version
+                                cargo verify-project || (echo "❌ Invalid Cargo project" && exit 1)
+                                echo "✅ Valid Cargo project"
+                                echo "📊 Project statistics:"
+                                echo "  Rust files: $(find src -name '*.rs' | wc -l)"
+                                echo "  Test files: $(find tests -name '*.rs' | wc -l)"
+                                echo "  Total lines: $(find src tests -name '*.rs' -exec cat {} \\; | wc -l)"
                             '''
                         }
                     }
@@ -129,8 +100,8 @@ pipeline {
                         script {
                             catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                                 echo "🎨 Checking code formatting..."
-                                sh 'podman exec ${CONTAINER_NAME} rustup component add rustfmt'
-                                sh 'podman exec ${CONTAINER_NAME} cargo fmt -- --check'
+                                sh 'rustup component add rustfmt'
+                                sh 'cargo fmt -- --check'
                                 echo "✅ Code formatting is correct"
                             }
                         }
@@ -145,8 +116,8 @@ pipeline {
                         script {
                             catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                                 echo "🔍 Running Clippy linter..."
-                                sh 'podman exec ${CONTAINER_NAME} rustup component add clippy'
-                                sh 'podman exec ${CONTAINER_NAME} cargo clippy -- -D warnings'
+                                sh 'rustup component add clippy'
+                                sh 'cargo clippy -- -D warnings'
                                 echo "✅ No clippy warnings"
                             }
                         }
@@ -161,7 +132,7 @@ pipeline {
                     steps {
                         script {
                             echo "🔨 Building project in debug mode..."
-                            sh 'podman exec ${CONTAINER_NAME} cargo build --verbose'
+                            sh 'cargo build --verbose'
                             echo "✅ Debug build completed"
                         }
                     }
@@ -182,7 +153,7 @@ pipeline {
                     steps {
                         script {
                             echo "🔨 Building project in release mode..."
-                            sh 'podman exec ${CONTAINER_NAME} cargo build --release --verbose'
+                            sh 'cargo build --release --verbose'
                             echo "✅ Release build completed"
                         }
                     }
@@ -209,10 +180,8 @@ pipeline {
                         script {
                             echo "🧪 Running Software Unit Tests..."
                             sh '''
-                                podman exec ${CONTAINER_NAME} bash -c '
-                                    cargo nextest run --test software --profile ci -E "test(unit_tests::)" --verbose
-                                    mv target/nextest/ci/junit.xml target/nextest/junit-software-unit.xml
-                                '
+                                cargo nextest run --test software --profile ci -E "test(unit_tests::)" --verbose
+                                mv target/nextest/ci/junit.xml target/nextest/junit-software-unit.xml
                             '''
                             echo "✅ Software unit tests passed"
                         }
@@ -233,10 +202,8 @@ pipeline {
                         script {
                             echo "🔗 Running Software Integration Tests..."
                             sh '''
-                                podman exec ${CONTAINER_NAME} bash -c '
-                                    cargo nextest run --test software --profile ci -E "test(integration_tests::)" --verbose
-                                    mv target/nextest/ci/junit.xml target/nextest/junit-software-integration.xml
-                                '
+                                cargo nextest run --test software --profile ci -E "test(integration_tests::)" --verbose
+                                mv target/nextest/ci/junit.xml target/nextest/junit-software-integration.xml
                             '''
                             echo "✅ Software integration tests passed"
                         }
@@ -260,10 +227,8 @@ pipeline {
                         script {
                             echo "🧪 Running ALL Software Tests..."
                             sh '''
-                                podman exec ${CONTAINER_NAME} bash -c '
-                                    cargo nextest run --test software --profile ci --verbose
-                                    mv target/nextest/ci/junit.xml target/nextest/junit-software-all.xml
-                                '
+                                cargo nextest run --test software --profile ci --verbose
+                                mv target/nextest/ci/junit.xml target/nextest/junit-software-all.xml
                             '''
                             echo "✅ All software tests passed"
                         }
@@ -286,7 +251,7 @@ pipeline {
                     steps {
                         script {
                             echo "⚡ Quick feedback - Running unit tests only..."
-                            sh 'podman exec ${CONTAINER_NAME} cargo nextest run --test software -E "test(unit_tests::)" --no-fail-fast'
+                            sh 'cargo nextest run --test software -E "test(unit_tests::)" --no-fail-fast'
                             echo "✅ Quick tests passed"
                         }
                     }
@@ -309,20 +274,15 @@ pipeline {
                 script {
                     echo "🧪 Running Acceptance Tests..."
                     sh '''
-                        # Install Maven and Java in the container
-                        podman exec ${CONTAINER_NAME} bash -c '
-                            apt-get update && apt-get -y install maven curl
-                        '
-
-                        # Start the UAV server in background inside the container
-                        podman exec -d ${CONTAINER_NAME} bash -c '
-                            cargo run -- serve --port 8080
-                        '
+                        # Start the UAV server in background
+                        cargo run -- serve --port 8080 > server.log 2>&1 &
+                        SERVER_PID=$!
+                        echo "Server started with PID: $SERVER_PID"
 
                         # Wait for server to be ready
                         echo "Waiting REST server is ready..."
                         for i in {1..30}; do
-                            if podman exec ${CONTAINER_NAME} curl -s http://localhost:8080/health > /dev/null; then
+                            if curl -s http://localhost:8080/health > /dev/null; then
                                 echo "Serveur prêt !"
                                 break
                             fi
@@ -331,11 +291,13 @@ pipeline {
                         done
 
                         # Build FitNesse fixtures and run tests
-                        podman exec ${CONTAINER_NAME} bash -c '
-                            cd fitnesse/fixtures && mvn clean install
-                            cd ..
-                            mvn clean test -Pfitnesse-tests
-                        '
+                        cd fitnesse/fixtures && mvn clean install
+                        cd ..
+                        mvn clean test -Pfitnesse-tests
+
+                        # Stop the server
+                        echo "Stopping server (PID: $SERVER_PID)..."
+                        kill $SERVER_PID || true
 
                         echo "✅ All Acceptance tests passed"
                     '''
@@ -375,10 +337,8 @@ pipeline {
                         script {
                             echo "🔗 Running MBSE Component Mapping Tests..."
                             sh '''
-                                podman exec ${CONTAINER_NAME} bash -c '
-                                    cargo nextest run --test mbse --profile ci -E "test(component_mapping_tests::)" --verbose
-                                    mv target/nextest/ci/junit.xml target/nextest/junit-mbse-components.xml
-                                '
+                                cargo nextest run --test mbse --profile ci -E "test(component_mapping_tests::)" --verbose
+                                mv target/nextest/ci/junit.xml target/nextest/junit-mbse-components.xml
                             '''
                             echo "✅ MBSE component mapping validated"
                         }
@@ -396,10 +356,8 @@ pipeline {
                         script {
                             echo "📋 Running MBSE Requirements Validation Tests..."
                             sh '''
-                                podman exec ${CONTAINER_NAME} bash -c '
-                                    cargo nextest run --test mbse --profile ci -E "test(requirements_validation_tests::)" --verbose
-                                    mv target/nextest/ci/junit.xml target/nextest/junit-mbse-requirements.xml
-                                '
+                                cargo nextest run --test mbse --profile ci -E "test(requirements_validation_tests::)" --verbose
+                                mv target/nextest/ci/junit.xml target/nextest/junit-mbse-requirements.xml
                             '''
                             echo "✅ All requirements validated"
                         }
@@ -417,10 +375,8 @@ pipeline {
                         script {
                             echo "⚠️ Running MBSE Safety Constraints Tests..."
                             sh '''
-                                podman exec ${CONTAINER_NAME} bash -c '
-                                    cargo nextest run --test mbse --profile ci -E "test(safety_constraints_tests::)" --verbose
-                                    mv target/nextest/ci/junit.xml target/nextest/junit-mbse-safety.xml
-                                '
+                                cargo nextest run --test mbse --profile ci -E "test(safety_constraints_tests::)" --verbose
+                                mv target/nextest/ci/junit.xml target/nextest/junit-mbse-safety.xml
                             '''
                             echo "✅ All safety constraints verified"
                         }
@@ -438,10 +394,8 @@ pipeline {
                         script {
                             echo "📊 Running MBSE Traceability Matrix Tests..."
                             sh '''
-                                podman exec ${CONTAINER_NAME} bash -c '
-                                    cargo nextest run --test mbse --profile ci -E "test(traceability_matrix_tests::)" --verbose
-                                    mv target/nextest/ci/junit.xml target/nextest/junit-mbse-traceability.xml
-                                '
+                                cargo nextest run --test mbse --profile ci -E "test(traceability_matrix_tests::)" --verbose
+                                mv target/nextest/ci/junit.xml target/nextest/junit-mbse-traceability.xml
                             '''
                             echo "✅ Traceability matrices validated"
                         }
@@ -467,10 +421,8 @@ pipeline {
                 script {
                     echo "🔗 Running ALL MBSE Traceability Tests..."
                     sh '''
-                        podman exec ${CONTAINER_NAME} bash -c '
-                            cargo nextest run --test mbse --profile ci --verbose
-                            mv target/nextest/ci/junit.xml target/nextest/junit-mbse-all.xml
-                        '
+                        cargo nextest run --test mbse --profile ci --verbose
+                        mv target/nextest/ci/junit.xml target/nextest/junit-mbse-all.xml
                     '''
                     echo "✅ All MBSE tests passed"
                 }
@@ -500,11 +452,9 @@ pipeline {
                         script {
                             echo "📊 Generating Complete Traceability Report..."
                             sh '''
-                                podman exec ${CONTAINER_NAME} bash -c '
-                                    cargo test --test mbse \
-                                      traceability_matrix_tests::test_complete_traceability_report -- --nocapture \
-                                      > traceability_report.txt 2>&1 || true
-                                '
+                                cargo test --test mbse \
+                                  traceability_matrix_tests::test_complete_traceability_report -- --nocapture \
+                                  > traceability_report.txt 2>&1 || true
                             '''
                             echo "✅ Traceability report generated"
                             sh 'tail -100 traceability_report.txt'
@@ -522,11 +472,9 @@ pipeline {
                         script {
                             echo "📋 Generating Requirements Coverage Report..."
                             sh '''
-                                podman exec ${CONTAINER_NAME} bash -c '
-                                    cargo test --test mbse \
-                                      traceability_matrix_tests::test_requirements_coverage_analysis -- --nocapture \
-                                      > requirements_coverage.txt 2>&1 || true
-                                '
+                                cargo test --test mbse \
+                                  traceability_matrix_tests::test_requirements_coverage_analysis -- --nocapture \
+                                  > requirements_coverage.txt 2>&1 || true
                             '''
                             echo "✅ Requirements coverage report generated"
                             sh 'tail -50 requirements_coverage.txt'
@@ -544,11 +492,9 @@ pipeline {
                         script {
                             echo "⚠️ Generating Safety Constraints Report..."
                             sh '''
-                                podman exec ${CONTAINER_NAME} bash -c '
-                                    cargo test --test mbse \
-                                      safety_constraints_tests::test_safety_constraints_documentation -- --nocapture \
-                                      > safety_constraints_report.txt 2>&1 || true
-                                '
+                                cargo test --test mbse \
+                                  safety_constraints_tests::test_safety_constraints_documentation -- --nocapture \
+                                  > safety_constraints_report.txt 2>&1 || true
                             '''
                             echo "✅ Safety constraints report generated"
                             sh 'cat safety_constraints_report.txt'
@@ -687,16 +633,6 @@ EOF
 
     post {
         always {
-            script {
-                // Stop and remove Podman container
-                sh '''
-                    echo "🧹 Cleaning up Podman container..."
-                    podman stop ${CONTAINER_NAME} || true
-                    podman rm ${CONTAINER_NAME} || true
-                    echo "✅ Container cleanup completed"
-                '''
-            }
-
             // Clean workspace after build
             cleanWs(
                 deleteDirs: true,
