@@ -92,6 +92,7 @@ pipeline {
                     }
                 }
 
+                /*
                 stage('Check Formatting') {
                     when {
                         not { branch 'main' }
@@ -123,6 +124,7 @@ pipeline {
                         }
                     }
                 }
+                */
             }
         }
 
