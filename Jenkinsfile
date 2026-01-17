@@ -144,12 +144,12 @@ pipeline {
         }
 
         stage('Build Release') {
-            when {
+           /* when {
                 anyOf {
                     branch 'main'
                     tag pattern: '*', comparator: 'REGEXP'
                 }
-            }
+            }*/
             steps {
                 script {
                     echo "🔨 Building project in release mode..."
