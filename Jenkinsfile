@@ -169,7 +169,7 @@ pipeline {
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
         stage('Software Tests') {
-            parallel {
+            stages {
                 stage('Software Unit Tests') {
                     when {
                         not { buildingTag() }
@@ -329,7 +329,7 @@ pipeline {
                     changeRequest()
                 }
             }
-            parallel {
+            stages {
                 stage('MBSE Component Mapping') {
                     steps {
                         script {
@@ -444,7 +444,7 @@ pipeline {
                     buildingTag()
                 }
             }
-            parallel {
+            stages {
                 stage('Traceability Report') {
                     steps {
                         script {
