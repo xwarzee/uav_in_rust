@@ -635,7 +635,10 @@ EOF
 
         stage('Release Validation') {
             when {
-                not { buildingTag() }
+                anyOf {
+                    branch 'main'
+                    buildingTag()
+                }
             }
             steps {
                 script {
