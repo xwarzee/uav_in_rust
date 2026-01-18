@@ -149,6 +149,7 @@ pipeline {
                     branch 'main'
                     buildingTag()
                 }
+            }
             steps {
                 script {
                     echo "🔨 Building project in release mode..."
