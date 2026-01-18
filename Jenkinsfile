@@ -293,8 +293,8 @@ pipeline {
         stage('Acceptance Tests') {
             when {
                 anyOf {
-                    branch 'main'
-                    buildingTag()
+                    not { branch 'main' }
+                    not { buildingTag() }
                 }
             }
             steps {
@@ -353,9 +353,8 @@ pipeline {
         stage('MBSE Tests') {
             when {
                 anyOf {
-                    branch 'main'
-                    buildingTag()
-                    changeRequest()
+                    not { branch 'main' }
+                    not { buildingTag() }
                 }
             }
             stages {
@@ -469,8 +468,8 @@ pipeline {
         stage('Generate Reports') {
             when {
                 anyOf {
-                    branch 'main'
-                    buildingTag()
+                    not { branch 'main' }
+                    not { buildingTag() }
                 }
             }
             stages {
@@ -539,8 +538,8 @@ pipeline {
         stage('Test Summary') {
             when {
                 anyOf {
-                    branch 'main'
-                    buildingTag()
+                    not { branch 'main' }
+                    not { buildingTag() }
                 }
             }
             steps {
@@ -636,7 +635,7 @@ EOF
 
         stage('Release Validation') {
             when {
-                buildingTag()
+                not { buildingTag() }
             }
             steps {
                 script {
