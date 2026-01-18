@@ -28,7 +28,10 @@ pipeline {
 
     environment {
         CARGO_HOME = "${WORKSPACE}/.cargo"
+        CARGO_TARGET_DIR = "${WORKSPACE}/target"
         RUST_VERSION = "1.92"
+        // Enable incremental compilation for faster debug builds
+        CARGO_INCREMENTAL = "1"
         // Git configuration
         GIT_DEPTH = '0'
     }
@@ -59,6 +62,32 @@ pipeline {
                             echo "✅ cargo-nextest already installed (cached)"
                             cargo nextest --version
                         fi
+                    '''
+                }
+            }
+        }
+
+        stage('Fetch Dependencies') {
+            steps {
+                script {
+                    echo "📦 Fetching and caching dependencies..."
+                    sh '''
+                        # Check if dependencies are already cached
+                        if [ -d "$CARGO_HOME/registry" ] && [ -d "target/debug/deps" ]; then
+                            echo "✅ Dependencies already cached"
+                            echo "   Registry: $CARGO_HOME/registry"
+                            echo "   Build cache: target/debug/deps"
+                        else
+                            echo "📥 Downloading dependencies..."
+                        fi
+
+                        # Fetch all dependencies without building
+                        cargo fetch --locked
+
+                        echo "✅ Dependencies fetched and cached"
+                        echo "📊 Cache statistics:"
+                        du -sh $CARGO_HOME/registry 2>/dev/null || echo "  Registry: N/A"
+                        du -sh target 2>/dev/null || echo "  Target: N/A"
                     '''
                 }
             }
