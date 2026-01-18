@@ -144,12 +144,11 @@ pipeline {
         }
 
         stage('Build Release') {
-           /* when {
+           when {
                 anyOf {
                     branch 'main'
-                    tag pattern: '*', comparator: 'REGEXP'
+                    buildingTag()
                 }
-            }*/
             steps {
                 script {
                     echo "🔨 Building project in release mode..."
@@ -172,7 +171,7 @@ pipeline {
             parallel {
                 stage('Software Unit Tests') {
                     when {
-                        not { tag pattern: '*', comparator: 'REGEXP' }
+                        not { buildingTag() }
                     }
                     steps {
                         script {
@@ -194,7 +193,7 @@ pipeline {
 
                 stage('Software Integration Tests') {
                     when {
-                        not { tag pattern: '*', comparator: 'REGEXP' }
+                        not { buildingTag() }
                     }
                     steps {
                         script {
@@ -218,7 +217,7 @@ pipeline {
                     when {
                         anyOf {
                             branch 'main'
-                            tag pattern: '*', comparator: 'REGEXP'
+                            buildingTag()
                         }
                     }
                     steps {
@@ -243,7 +242,7 @@ pipeline {
                     when {
                         allOf {
                             not { branch 'main' }
-                            not { tag pattern: '*', comparator: 'REGEXP' }
+                            not { buildingTag() }
                         }
                     }
                     steps {
@@ -265,7 +264,7 @@ pipeline {
             when {
                 anyOf {
                     branch 'main'
-                    tag pattern: '*', comparator: 'REGEXP'
+                    buildingTag()
                 }
             }
             steps {
@@ -325,7 +324,7 @@ pipeline {
             when {
                 anyOf {
                     branch 'main'
-                    tag pattern: '*', comparator: 'REGEXP'
+                    buildingTag()
                     changeRequest()
                 }
             }
@@ -412,7 +411,7 @@ pipeline {
             when {
                 anyOf {
                     branch 'main'
-                    tag pattern: '*', comparator: 'REGEXP'
+                    buildingTag()
                 }
             }
             steps {
@@ -441,7 +440,7 @@ pipeline {
             when {
                 anyOf {
                     branch 'main'
-                    tag pattern: '*', comparator: 'REGEXP'
+                    buildingTag()
                 }
             }
             parallel {
@@ -511,7 +510,7 @@ pipeline {
             when {
                 anyOf {
                     branch 'main'
-                    tag pattern: '*', comparator: 'REGEXP'
+                    buildingTag()
                 }
             }
             steps {
@@ -607,7 +606,7 @@ EOF
 
         stage('Release Validation') {
             when {
-                tag pattern: '*', comparator: 'REGEXP'
+                buildingTag()
             }
             steps {
                 script {
