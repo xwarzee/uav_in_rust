@@ -82,7 +82,7 @@ pipeline {
                         fi
 
                         # Fetch all dependencies without building
-                        cargo fetch --locked
+                        cargo fetch
 
                         echo "✅ Dependencies fetched and cached"
                         echo "📊 Cache statistics:"
