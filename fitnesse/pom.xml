@@ -50,6 +50,7 @@
                                 <include>**/FitNesseRunnerTest.java</include>
                             </includes>
                             <forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
+                            <argLine>-Djava.security.manager=allow</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
