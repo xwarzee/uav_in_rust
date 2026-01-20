@@ -49,7 +49,7 @@ pipeline {
                     sh 'git rev-parse --verify HEAD'
                     sh 'git status --short'
                     echo ""
-                    sh 'curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh'
+                    sh """curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"""
                     echo "🦀 Rust Toolchain Information"
                     sh 'rustc --version'
                     sh 'cargo --version'
