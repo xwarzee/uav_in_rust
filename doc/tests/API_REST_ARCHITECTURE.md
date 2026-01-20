@@ -83,6 +83,8 @@ The API follows a clear layered architecture:
 
 Component diagram of the API architecture.
 
+![API REST Architecture Components](images/API%20REST%20Architecture%20Components.png)
+
 <details>
 <summary>View PlantUML Source</summary>
 
@@ -676,6 +678,8 @@ pub enum ApiError {
 
 This diagram illustrates the complete flow of a typical HTTP request through the different API layers.
 
+![HTTP Request Sequence](images/HTTP%20Request%20Sequence.png)
+
 <details>
 <summary>View PlantUML Source</summary>
 
@@ -771,6 +775,8 @@ end note
 ## Data Models
 
 ### Data Model Class Diagram
+
+![API Data Models](images/API%20Data%20Models.png)
 
 <details>
 <summary>View PlantUML Source</summary>

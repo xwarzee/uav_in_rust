@@ -50,6 +50,8 @@ The FitNesse test suite provides automated acceptance testing for the UAV Swarm 
 
 FitNesse tests follow a three-layer architecture.
 
+![FitNesse Test Architecture Components](images/FitNesse%20Test%20Architecture%20Components.png)
+
 <details>
 <summary>View PlantUML Source</summary>
 
@@ -215,6 +217,8 @@ FitNesseRoot/
 ### Fixture Hierarchy
 
 Class diagram showing the hierarchy and responsibilities of test fixtures.
+
+![Fixture Class Hierarchy](images/Fixture%20Class%20Hierarchy.png)
 
 <details>
 <summary>View PlantUML Source</summary>
@@ -721,6 +725,8 @@ UavSwarmApi/                    # Main suite
 ### Complete Test Flow
 
 Detailed sequence of FitNesse test execution from wiki page to result validation.
+
+![Test Execution Sequence](images/Test%20Execution%20Sequence.png)
 
 <details>
 <summary>View PlantUML Source</summary>
