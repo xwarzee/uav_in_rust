@@ -58,7 +58,7 @@ pipeline {
                     // Install cargo-nextest if not cached
                         if ! command -v cargo-nextest &> /dev/null; then
                             echo "📦 Installing cargo-nextest..."
-                            sudo cargo install cargo-nextest --locked
+                            cargo install cargo-nextest
                         else
                             echo "✅ cargo-nextest already installed (cached)"
                             cargo nextest --version
