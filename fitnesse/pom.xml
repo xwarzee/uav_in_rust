@@ -50,7 +50,8 @@
                                 <include>**/FitNesseRunnerTest.java</include>
                             </includes>
                             <forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
-                            <argLine>-Djava.security.manager=allow -Dapi.base.url=http://localhost:8091</argLine>
+                            <argLine>-Djava.security.manager=allow</argLine>
+                            <argLine>-Dapi.base.url=http://localhost:8091</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
