@@ -660,7 +660,7 @@ EOF
             }
         }
     }
-
+/*
     post {
         always {
             // Clean workspace after build
@@ -684,4 +684,5 @@ EOF
             echo '⚠️ Pipeline completed with warnings!'
         }
     }
+*/
 }
