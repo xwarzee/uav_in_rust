@@ -539,8 +539,8 @@ pipeline {
         stage('Test Summary') {
             when {
                 anyOf {
-                    branch 'main'
-                    buildingTag()
+                    not { branch 'main' }
+                    not { buildingTag() }
                 }
             }
             steps {
@@ -551,7 +551,7 @@ pipeline {
 UAV Swarm System - Test Summary
 ═══════════════════════════════════════════
 
-Pipeline: ${BUILD_NUMBER}
+Pipeline: ${env.BUILD_NUMBER}
 Commit: ${env.GIT_COMMIT?.take(8)}
 Branch: ${env.GIT_BRANCH}
 Date: $(date)
@@ -620,7 +620,7 @@ EOF
 
 OVERALL SUMMARY
 ═══════════════════════════════════════════
-Status: Build ${BUILD_NUMBER} completed
+Status: Build ${env.BUILD_NUMBER} completed
 All critical tests passed
 EOF
                         cat test_summary.txt
