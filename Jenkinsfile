@@ -50,14 +50,12 @@ pipeline {
                     sh 'git status --short'
                     echo ""
                     sh """
-                       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-                       . '/var/lib/jenkins/workspace/uav_in_rust/.cargo/env'
-                       echo "🦀 Rust Toolchain Information"
-                       rustc --version
-                       cargo --version
-                    """
+                        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+                        . '/var/lib/jenkins/workspace/uav_in_rust/.cargo/env'
+                        echo "🦀 Rust Toolchain Information"
+                        rustc --version
+                        cargo --version
                     // Install cargo-nextest if not cached
-                    sh '''
                         if ! command -v cargo-nextest &> /dev/null; then
                             echo "📦 Installing cargo-nextest..."
                             cargo install cargo-nextest --locked
@@ -65,7 +63,7 @@ pipeline {
                             echo "✅ cargo-nextest already installed (cached)"
                             cargo nextest --version
                         fi
-                    '''
+                    """
                 }
             }
         }
