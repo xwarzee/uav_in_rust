@@ -50,8 +50,6 @@ pipeline {
                     sh 'git status --short'
                     echo ""
                     sh """
-                        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-                        . '/var/lib/jenkins/workspace/uav_in_rust/.cargo/env'
                         echo "🦀 Rust Toolchain Information"
                         rustc --version
                         cargo --version
