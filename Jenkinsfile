@@ -303,14 +303,14 @@ pipeline {
                     echo "🧪 Running Acceptance Tests..."
                     sh '''
                         # Start the UAV server in background
-                        cargo run -- serve --port 8080 > server.log 2>&1 &
+                        cargo run -- serve --port 8091 > server.log 2>&1 &
                         SERVER_PID=$!
                         echo "Server started with PID: $SERVER_PID"
 
                         # Wait for server to be ready
                         echo "Waiting REST server is ready..."
                         for i in {1..30}; do
-                            if curl -s http://localhost:8080/health > /dev/null; then
+                            if curl -s http://localhost:8091/health > /dev/null; then
                                 echo "Serveur prêt !"
                                 break
                             fi
