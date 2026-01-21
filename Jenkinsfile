@@ -552,8 +552,8 @@ UAV Swarm System - Test Summary
 ═══════════════════════════════════════════
 
 Pipeline: ${BUILD_NUMBER}
-Commit: ${GIT_COMMIT:0:8}
-Branch: ${GIT_BRANCH}
+Commit: ${env.GIT_COMMIT?.take(8)}
+Branch: ${env.GIT_BRANCH}
 Date: $(date)
 
 SOFTWARE TESTS
