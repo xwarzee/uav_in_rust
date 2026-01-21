@@ -330,7 +330,6 @@ pipeline {
                         echo "✅ All Acceptance tests passed"
                     '''
                 }
-            }
             post {
                 always {
                     junit testResults: 'fitnesse/target/surefire-reports/TEST-FitNesseRunnerTest.xml', allowEmptyResults: true
