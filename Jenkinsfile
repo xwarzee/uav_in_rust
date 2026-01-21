@@ -53,7 +53,9 @@ pipeline {
                         echo "🦀 Rust Toolchain Information"
                         rustc --version
                         cargo --version
+                    """
                     // Install cargo-nextest if not cached
+                    sh '''
                         if ! command -v cargo-nextest &> /dev/null; then
                             echo "📦 Installing cargo-nextest..."
                             cargo install cargo-nextest --locked
@@ -61,7 +63,7 @@ pipeline {
                             echo "✅ cargo-nextest already installed (cached)"
                             cargo nextest --version
                         fi
-                    """
+                    '''
                 }
             }
         }
