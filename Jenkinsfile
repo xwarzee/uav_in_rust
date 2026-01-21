@@ -539,8 +539,8 @@ pipeline {
         stage('Test Summary') {
             when {
                 anyOf {
-                    not { branch 'main' }
-                    not { buildingTag() }
+                    branch 'main'
+                    buildingTag()
                 }
             }
             steps {
