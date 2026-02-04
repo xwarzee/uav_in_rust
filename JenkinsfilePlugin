@@ -20,7 +20,7 @@ pipeline {
                             // Configuration NoMachine avec la clé SSH
                             withCredentials([sshUserPrivateKey(credentialsId: 'gazebo_ssh_key', keyFileVariable: 'SSH_KEY')]) {
                             sh """
-                                ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} 'mkdir /home/ubuntu/uav_in_rust/'
+                                ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} 'mkdir -p /home/ubuntu/uav_in_rust/'
                                 scp -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r gazebo/ ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER}:/home/ubuntu/uav_in_rust/
                             """
                             }
