@@ -24,3 +24,8 @@ utoipa = { version = "4.2", features = ["actix_extras"] }
 utoipa-swagger-ui = { version = "6.0", features = ["actix-web"] }
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
+
+# Simulation engine dependencies
+reqwest = { version = "0.12", features = ["json"] }
+toml = "0.8"
+async-trait = "0.1"

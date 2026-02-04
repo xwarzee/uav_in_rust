@@ -1,0 +1,24 @@
+# Build artifacts
+plugins/*/build/
+plugins/*/CMakeFiles/
+plugins/*/*.cmake
+plugins/*/Makefile
+
+# Compiled plugins
+*.so
+*.dylib
+*.dll
+
+# CMake cache
+CMakeCache.txt
+cmake_install.cmake
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log

@@ -1,6 +1,7 @@
 use crate::api::error::ApiError;
-use crate::api::models::{DroneDetailResponse, DroneListResponse, UpdateTargetRequest};
+use crate::api::models::{DroneDetailResponse, DroneListResponse, UpdateTargetRequest, UpdateDroneStateRequest};
 use crate::api::state::AppState;
+use crate::api::websocket::messages::DroneUpdate;
 use actix_web::{web, HttpResponse};
 
 #[utoipa::path(
@@ -117,5 +118,53 @@ pub async fn update_target(
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": format!("Target updated for drone {}", drone_id)
+    })))
+}
+
+/// Update drone state from external simulation (Gazebo)
+///
+/// This endpoint is used by the Gazebo bridge to push drone state updates
+#[utoipa::path(
+    put,
+    path = "/api/drones/{id}/state",
+    request_body = UpdateDroneStateRequest,
+    responses(
+        (status = 200, description = "Drone state updated successfully"),
+        (status = 404, description = "Drone not found"),
+        (status = 500, description = "Internal error")
+    ),
+    tag = "drones",
+    params(
+        ("id" = String, Path, description = "Drone ID")
+    )
+)]
+pub async fn update_drone_state(
+    drone_id: web::Path<String>,
+    state_update: web::Json<UpdateDroneStateRequest>,
+    app_state: web::Data<AppState>,
+) -> Result<HttpResponse, ApiError> {
+    let mut swarm = app_state.swarm.lock().await;
+
+    let drone = swarm
+        .drones
+        .get_mut(drone_id.as_str())
+        .ok_or_else(|| ApiError::DroneNotFound(drone_id.to_string()))?;
+
+    // Update drone state from Gazebo
+    drone.position = state_update.position;
+    drone.velocity = state_update.velocity;
+
+    // Broadcast update via WebSocket
+    let update = DroneUpdate::PositionUpdate {
+        drone_id: drone_id.to_string(),
+        position: drone.position,
+        velocity: drone.velocity,
+    };
+
+    // Ignore broadcast errors (no subscribers is OK)
+    let _ = app_state.broadcast_tx.send(update);
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": format!("State updated for drone {}", drone_id)
     })))
 }

@@ -13,22 +13,27 @@ pub enum ApiError {
     #[error("Invalid formation type: {0}")]
     InvalidFormation(String),
 
+    #[error("Bad request: {0}")]
+    BadRequest(String),
 
     #[error("Validation error: {0}")]
     ValidationError(String),
 
     #[error("Internal error: {0}")]
     Internal(String),
+
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }
 
 impl ResponseError for ApiError {
     fn status_code(&self) -> StatusCode {
         match self {
             ApiError::DroneNotFound(_) | ApiError::MissionNotFound(_) => StatusCode::NOT_FOUND,
-            ApiError::InvalidFormation(_) | ApiError::ValidationError(_) => {
+            ApiError::InvalidFormation(_) | ApiError::ValidationError(_) | ApiError::BadRequest(_) => {
                 StatusCode::BAD_REQUEST
             }
-            ApiError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError::Internal(_) | ApiError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 

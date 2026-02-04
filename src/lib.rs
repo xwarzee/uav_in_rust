@@ -8,3 +8,4 @@ pub mod formation;
 pub mod mission;
 pub mod swarm;
 pub mod api;
+pub mod simulation;

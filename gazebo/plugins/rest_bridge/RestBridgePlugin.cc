@@ -1,0 +1,215 @@
+#include "RestBridgePlugin.hh"
+#include "HttpServer.hh"
+
+#include <ignition/gazebo/components/Pose.hh>
+#include <ignition/gazebo/components/LinearVelocity.hh>
+#include <ignition/gazebo/components/Link.hh>
+#include <ignition/gazebo/components/Model.hh>
+#include <ignition/gazebo/components/Name.hh>
+#include <ignition/gazebo/Model.hh>
+#include <ignition/plugin/Register.hh>
+#include <ignition/common/Console.hh>
+
+#include <httplib.h>
+#include <sstream>
+#include <iomanip>
+
+using namespace gazebo_plugins;
+using namespace ignition::gazebo;
+
+RestBridgePlugin::RestBridgePlugin()
+    : syncEnabled(false), httpPort(8092) {
+}
+
+RestBridgePlugin::~RestBridgePlugin() {
+    if (httpServer) {
+        httpServer->Stop();
+    }
+}
+
+void RestBridgePlugin::Configure(const Entity &entity,
+                                  const std::shared_ptr<const sdf::Element> &sdf,
+                                  EntityComponentManager &ecm,
+                                  EventManager &/*eventMgr*/) {
+    // Read configuration from SDF
+    if (sdf->HasElement("rust_api_url")) {
+        rustApiUrl = sdf->Get<std::string>("rust_api_url");
+    } else {
+        rustApiUrl = "http://localhost:8080";
+    }
+
+    if (sdf->HasElement("http_port")) {
+        httpPort = sdf->Get<int>("http_port");
+    }
+
+    // Parse drone names from SDF
+    auto droneElem = sdf->FindElement("drone");
+    while (droneElem) {
+        std::string droneName = droneElem->Get<std::string>();
+        droneNames.push_back(droneName);
+        droneElem = droneElem->GetNextElement("drone");
+    }
+
+    ignmsg << "RestBridgePlugin configuration:" << std::endl;
+    ignmsg << "  - Rust API URL: " << rustApiUrl << std::endl;
+    ignmsg << "  - HTTP Port: " << httpPort << std::endl;
+    ignmsg << "  - Drones: ";
+    for (const auto &name : droneNames) {
+        ignmsg << name << " ";
+    }
+    ignmsg << std::endl;
+
+    // Find drone entities in the world
+    for (const auto &droneName : droneNames) {
+        ecm.Each<components::Model, components::Name>(
+            [&](const Entity &entity,
+                const components::Model *,
+                const components::Name *name) -> bool {
+                if (name->Data() == droneName) {
+                    droneEntities[droneName] = entity;
+                    ignmsg << "Found drone entity: " << droneName
+                          << " (Entity: " << entity << ")" << std::endl;
+                    return false;  // Stop searching once found
+                }
+                return true;  // Continue searching
+            });
+    }
+
+    // Verify all drones were found
+    for (const auto &droneName : droneNames) {
+        if (droneEntities.find(droneName) == droneEntities.end()) {
+            ignerr << "Warning: Drone '" << droneName << "' not found in world!" << std::endl;
+        }
+    }
+
+    // Start HTTP server
+    httpServer = std::make_unique<HttpServer>(httpPort, this);
+    httpServer->Start();
+
+    ignmsg << "RestBridgePlugin initialized successfully on port " << httpPort << std::endl;
+}
+
+void RestBridgePlugin::PreUpdate(const UpdateInfo &info,
+                                  EntityComponentManager &ecm) {
+    std::lock_guard<std::mutex> lock(commandMutex);
+
+    // Get time delta
+    double dt = std::chrono::duration<double>(info.dt).count();
+    if (dt <= 0) dt = 0.01;  // Default to 10ms if no time info
+
+    // Apply commands to drones
+    for (const auto &[droneId, targetPos] : droneCommands) {
+        auto it = droneEntities.find(droneId);
+        if (it == droneEntities.end()) {
+            continue;
+        }
+
+        Entity droneEntity = it->second;
+        Model model(droneEntity);
+
+        // Get current pose
+        auto poseComp = ecm.Component<components::Pose>(droneEntity);
+        if (!poseComp) {
+            continue;
+        }
+
+        ignition::math::Pose3d currentPose = poseComp->Data();
+        ignition::math::Vector3d currentPos = currentPose.Pos();
+
+        // Calculate movement towards target (simple interpolation)
+        ignition::math::Vector3d error = targetPos - currentPos;
+        double distance = error.Length();
+
+        if (distance > 0.01) {  // Only move if not at target
+            // Maximum speed: 5 m/s
+            double maxSpeed = 5.0;
+            double moveDistance = std::min(maxSpeed * dt, distance);
+
+            ignition::math::Vector3d newPos = currentPos + error.Normalized() * moveDistance;
+
+            // Create new pose with updated position (keep same rotation)
+            ignition::math::Pose3d newPose(newPos, currentPose.Rot());
+
+            // Set the new pose
+            poseComp->Data() = newPose;
+        }
+    }
+}
+
+void RestBridgePlugin::PostUpdate(const UpdateInfo &/*info*/,
+                                   const EntityComponentManager &ecm) {
+    if (!syncEnabled) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(stateMutex);
+
+    // Read drone states and send to Rust API
+    for (const auto &[droneId, droneEntity] : droneEntities) {
+        auto poseComp = ecm.Component<components::Pose>(droneEntity);
+        auto velComp = ecm.Component<components::LinearVelocity>(droneEntity);
+
+        if (!poseComp || !velComp) {
+            continue;
+        }
+
+        ignition::math::Pose3d pose = poseComp->Data();
+        ignition::math::Vector3d velocity = velComp->Data();
+
+        // Send to Rust API (async in separate thread to avoid blocking)
+        SendDroneStateToRust(droneId, pose, velocity);
+    }
+}
+
+void RestBridgePlugin::SetDroneCommand(const std::string &drone_id,
+                                       const ignition::math::Vector3d &target_position) {
+    std::lock_guard<std::mutex> lock(commandMutex);
+    droneCommands[drone_id] = target_position;
+    ignmsg << "Received command for " << drone_id << ": ("
+          << target_position.X() << ", "
+          << target_position.Y() << ", "
+          << target_position.Z() << ")" << std::endl;
+}
+
+std::map<std::string, std::pair<ignition::math::Pose3d, ignition::math::Vector3d>>
+RestBridgePlugin::GetDroneStates() const {
+    std::map<std::string, std::pair<ignition::math::Pose3d, ignition::math::Vector3d>> states;
+    // Note: This would need access to ECM, typically called from PostUpdate context
+    // For now, return empty map - states are sent via HTTP in PostUpdate
+    return states;
+}
+
+void RestBridgePlugin::SendDroneStateToRust(const std::string &drone_id,
+                                            const ignition::math::Pose3d &pose,
+                                            const ignition::math::Vector3d &velocity) {
+    // Build JSON payload
+    std::ostringstream json;
+    json << std::fixed << std::setprecision(6);
+    json << "{"
+         << "\"position\": {"
+         << "\"x\": " << pose.Pos().X() << ","
+         << "\"y\": " << pose.Pos().Y() << ","
+         << "\"z\": " << pose.Pos().Z()
+         << "},"
+         << "\"velocity\": {"
+         << "\"vx\": " << velocity.X() << ","
+         << "\"vy\": " << velocity.Y() << ","
+         << "\"vz\": " << velocity.Z()
+         << "}"
+         << "}";
+
+    // Send HTTP PUT request to Rust API (async)
+    std::string url = rustApiUrl + "/api/drones/" + drone_id + "/state";
+    std::string body = json.str();
+
+    // Use thread pool from HttpServer to avoid blocking
+    httpServer->SendToRust(url, body);
+}
+
+// Register the plugin
+IGNITION_ADD_PLUGIN(
+    RestBridgePlugin,
+    ignition::gazebo::System,
+    RestBridgePlugin::ISystemConfigure,
+    RestBridgePlugin::ISystemPreUpdate,
+    RestBridgePlugin::ISystemPostUpdate)

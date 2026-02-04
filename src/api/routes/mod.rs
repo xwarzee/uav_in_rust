@@ -2,6 +2,7 @@ pub mod swarm;
 pub mod drones;
 pub mod formations;
 pub mod missions;
+pub mod simulation;
 
 use actix_web::web;
 
@@ -12,6 +13,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .configure(drones::configure)
             .configure(formations::configure)
             .configure(missions::configure)
+            .configure(simulation::configure)
             .route("/health", web::get().to(health_check))
             .route("/ws/drones", web::get().to(crate::api::websocket::websocket_handler))
     );

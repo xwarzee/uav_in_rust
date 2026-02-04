@@ -1,6 +1,7 @@
-use crate::drone::{Drone, Position, DroneStatus, DroneStatusInfo};
+use crate::drone::{Drone, Position, DroneStatusInfo};
 use crate::formation::{FormationManager, FormationType};
 use crate::mission::{MissionExecutor, MissionType};
+use crate::simulation::{SimulationEngine, SimulationMode, InternalSimulationEngine, GazeboSimulationEngine, SimulationConfig};
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration, Instant};
 
@@ -10,16 +11,29 @@ pub struct DroneSwarm {
     pub mission_executor: MissionExecutor,
     pub simulation_running: bool,
     last_update: Instant,
+
+    // Simulation engine abstraction
+    simulation_engine: Box<dyn SimulationEngine>,
+    simulation_mode: SimulationMode,
 }
 
 impl DroneSwarm {
     pub fn new() -> Self {
+        // Default constructor uses internal simulation engine
+        let engine = Box::new(InternalSimulationEngine::new());
+        Self::new_with_engine(engine)
+    }
+
+    pub fn new_with_engine(engine: Box<dyn SimulationEngine>) -> Self {
+        let mode = engine.mode();
         Self {
             drones: HashMap::new(),
             formation_manager: FormationManager::new(),
             mission_executor: MissionExecutor::new(),
             simulation_running: false,
             last_update: Instant::now(),
+            simulation_engine: engine,
+            simulation_mode: mode,
         }
     }
 
@@ -142,13 +156,58 @@ impl DroneSwarm {
         self.drones.values().map(|drone| drone.get_status_info()).collect()
     }
 
-    pub fn update_swarm(&mut self) {
+    /// Get the current simulation mode
+    pub fn get_simulation_mode(&self) -> SimulationMode {
+        self.simulation_mode
+    }
+
+    /// Check if simulation engine is connected
+    pub fn is_engine_connected(&self) -> bool {
+        self.simulation_engine.is_connected()
+    }
+
+    /// Switch between simulation modes (internal vs Gazebo)
+    pub async fn switch_mode(&mut self, new_mode: SimulationMode, config: &SimulationConfig) -> Result<(), String> {
+        if self.simulation_mode == new_mode {
+            tracing::info!("Already in {:?} mode", new_mode);
+            return Ok(()); // Already in this mode
+        }
+
+        tracing::info!("Switching from {:?} to {:?} mode", self.simulation_mode, new_mode);
+
+        // Shutdown current engine
+        self.simulation_engine.shutdown().await?;
+
+        // Create new engine based on mode
+        let mut new_engine: Box<dyn SimulationEngine> = match new_mode {
+            SimulationMode::Internal => {
+                Box::new(InternalSimulationEngine::new())
+            },
+            SimulationMode::Gazebo => {
+                Box::new(GazeboSimulationEngine::new(
+                    config.gazebo.bridge_url.clone(),
+                    config.gazebo.timeout_ms,
+                ))
+            },
+        };
+
+        // Initialize new engine
+        new_engine.initialize().await?;
+
+        self.simulation_engine = new_engine;
+        self.simulation_mode = new_mode;
+
+        tracing::info!("Successfully switched to {:?} simulation mode", new_mode);
+        Ok(())
+    }
+
+    pub async fn update_swarm(&mut self) {
         let now = Instant::now();
         let dt = now.duration_since(self.last_update).as_secs_f64();
-        
-        // Update all drone positions
-        for drone in self.drones.values_mut() {
-            drone.update_position(dt);
+
+        // Delegate position updates to simulation engine
+        if let Err(e) = self.simulation_engine.update_drones(&mut self.drones, dt).await {
+            tracing::error!("Simulation engine update error: {}", e);
         }
 
         // Update formation if needed
@@ -169,7 +228,7 @@ impl DroneSwarm {
         // Run simulation loop
         let mut iteration = 0;
         while self.simulation_running && iteration < 100 { // Limit iterations for demo
-            self.update_swarm();
+            self.update_swarm().await;
             
             // Print status every 10 iterations
             if iteration % 10 == 0 {

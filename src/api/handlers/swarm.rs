@@ -62,7 +62,7 @@ pub async fn start_simulation(
                     break;
                 }
 
-                swarm.update_swarm();
+                swarm.update_swarm().await;
                 let drone_status = swarm.get_swarm_status();
                 (true, drone_status)
             };

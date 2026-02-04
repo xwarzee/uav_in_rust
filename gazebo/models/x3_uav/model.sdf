@@ -1,0 +1,164 @@
+<?xml version="1.0"?>
+<sdf version="1.8">
+  <model name="x3_uav">
+    <link name="base_link">
+      <!-- Inertial properties for a small quadrotor -->
+      <inertial>
+        <mass>1.5</mass>
+        <inertia>
+          <ixx>0.03</ixx>
+          <iyy>0.03</iyy>
+          <izz>0.04</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <!-- Main body collision -->
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>0.3 0.3 0.15</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- Main body visual -->
+      <visual name="body_visual">
+        <geometry>
+          <box>
+            <size>0.3 0.3 0.15</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.2 0.5 0.8 1</ambient>
+          <diffuse>0.2 0.5 0.8 1</diffuse>
+          <specular>0.5 0.5 0.5 1</specular>
+        </material>
+      </visual>
+
+      <!-- Rotor arms -->
+      <visual name="arm_front_left">
+        <pose>0.15 0.15 0 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.02</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+
+      <visual name="arm_front_right">
+        <pose>0.15 -0.15 0 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.02</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+
+      <visual name="arm_back_left">
+        <pose>-0.15 0.15 0 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.02</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+
+      <visual name="arm_back_right">
+        <pose>-0.15 -0.15 0 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.02</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+
+      <!-- Propellers -->
+      <visual name="prop_front_left">
+        <pose>0.15 0.15 0.08 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.08</radius>
+            <length>0.01</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.9 0.1 0.1 0.8</ambient>
+          <diffuse>0.9 0.1 0.1 0.8</diffuse>
+        </material>
+      </visual>
+
+      <visual name="prop_front_right">
+        <pose>0.15 -0.15 0.08 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.08</radius>
+            <length>0.01</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.9 0.1 0.1 0.8</ambient>
+          <diffuse>0.9 0.1 0.1 0.8</diffuse>
+        </material>
+      </visual>
+
+      <visual name="prop_back_left">
+        <pose>-0.15 0.15 0.08 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.08</radius>
+            <length>0.01</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.9 0.1 0.8</ambient>
+          <diffuse>0.1 0.9 0.1 0.8</diffuse>
+        </material>
+      </visual>
+
+      <visual name="prop_back_right">
+        <pose>-0.15 -0.15 0.08 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.08</radius>
+            <length>0.01</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.9 0.1 0.8</ambient>
+          <diffuse>0.1 0.9 0.1 0.8</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- Plugin for applying forces/velocities -->
+    <plugin
+      filename="ignition-gazebo-apply-link-wrench-system"
+      name="ignition::gazebo::systems::ApplyLinkWrench">
+      <link_name>base_link</link_name>
+    </plugin>
+
+  </model>
+</sdf>
