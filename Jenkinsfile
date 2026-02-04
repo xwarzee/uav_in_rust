@@ -49,10 +49,11 @@ pipeline {
                     sh 'git rev-parse --verify HEAD'
                     sh 'git status --short'
                     echo ""
-                    echo "🦀 Rust Toolchain Information"
-                    sh 'rustc --version'
-                    sh 'cargo --version'
-
+                    sh """
+                        echo "🦀 Rust Toolchain Information"
+                        rustc --version
+                        cargo --version
+                    """
                     // Install cargo-nextest if not cached
                     sh '''
                         if ! command -v cargo-nextest &> /dev/null; then
@@ -538,8 +539,8 @@ pipeline {
         stage('Test Summary') {
             when {
                 anyOf {
-                    not { branch 'main' }
-                    not { buildingTag() }
+                     branch 'main'
+                     buildingTag()
                 }
             }
             steps {
@@ -550,9 +551,9 @@ pipeline {
 UAV Swarm System - Test Summary
 ═══════════════════════════════════════════
 
-Pipeline: ${BUILD_NUMBER}
-Commit: ${GIT_COMMIT:0:8}
-Branch: ${GIT_BRANCH}
+Pipeline: ${env.BUILD_NUMBER}
+Commit: ${env.GIT_COMMIT?.take(8)}
+Branch: ${env.GIT_BRANCH}
 Date: $(date)
 
 SOFTWARE TESTS
@@ -619,7 +620,7 @@ EOF
 
 OVERALL SUMMARY
 ═══════════════════════════════════════════
-Status: Build ${BUILD_NUMBER} completed
+Status: Build ${env.BUILD_NUMBER} completed
 All critical tests passed
 EOF
                         cat test_summary.txt
@@ -659,7 +660,7 @@ EOF
             }
         }
     }
-
+/*
     post {
         always {
             // Clean workspace after build
@@ -683,4 +684,5 @@ EOF
             echo '⚠️ Pipeline completed with warnings!'
         }
     }
+*/
 }
