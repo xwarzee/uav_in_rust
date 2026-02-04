@@ -33,6 +33,9 @@ pipeline {
                             // Configuration NoMachine avec la clé SSH
                             withCredentials([sshUserPrivateKey(credentialsId: 'gazebo_ssh_key', keyFileVariable: 'SSH_KEY')]) {
                             sh """
+                                # Configuration DNS
+                                ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} 'sudo resolvectl dns ens3 8.8.8.8 8.8.4.4 1.1.1.1'
+                                ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} 'sudo systemctl restart systemd-resolved'
                                 ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} '/home/ubuntu/uav_in_rust/gazebo/launch/start_simulation.sh --headless'
                             """
                             }
