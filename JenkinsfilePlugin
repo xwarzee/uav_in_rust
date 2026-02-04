@@ -1,0 +1,45 @@
+pipeline {
+    agent any
+    
+    parameters {
+        string(name: 'IP_ADDRESS_GAZEBO_SERVER', defaultValue: '', description: 'IP address of the Gazebo server')
+    }
+
+    stages {
+        stage('Deploy') {
+            when {
+                anyOf {
+                    not { branch 'main' }
+                    not { buildingTag() }
+                }
+            }
+            stages {
+                stage('Deploy Gazebo Plugin') {
+                    steps {
+                        script {
+                            // Configuration NoMachine avec la clé SSH
+                            withCredentials([sshUserPrivateKey(credentialsId: 'gazebo_ssh_key', keyFileVariable: 'SSH_KEY')]) {
+                            sh """
+                                ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} 'mkdir /home/ubuntu/uav_in_rust/'
+                                scp -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r gazebo/ ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER}:/home/ubuntu/uav_in_rust/
+                            """
+                            }
+                        }
+                    }
+                }
+                stage('Start Simulation') {
+                    steps {
+                        script {
+                            // Configuration NoMachine avec la clé SSH
+                            withCredentials([sshUserPrivateKey(credentialsId: 'gazebo_ssh_key', keyFileVariable: 'SSH_KEY')]) {
+                            sh """
+                                ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} '/home/ubuntu/uav_in_rust/gazebo/launch/start_simulation.sh --headless'
+                            """
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
