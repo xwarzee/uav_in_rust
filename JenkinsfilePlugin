@@ -2,7 +2,7 @@ pipeline {
     agent any
     
     parameters {
-        string(name: 'IP_ADDRESS_GAZEBO_SERVER', defaultValue: '', description: 'IP address of the Gazebo server')
+        string(name: 'IP_ADDRESS_GAZEBO_SERVER', defaultValue: params.IP_ADDRESS_GAZEBO_SERVER ?: '127.0.0.1', description: 'IP address of the Gazebo server')
         booleanParam(name: 'startGazeboSimu', defaultValue: false, description: 'Automatically start Gazebo simulation on server?')
     }
 
