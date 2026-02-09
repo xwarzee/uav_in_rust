@@ -3,6 +3,7 @@ pipeline {
     
     parameters {
         string(name: 'IP_ADDRESS_GAZEBO_SERVER', defaultValue: '', description: 'IP address of the Gazebo server')
+        booleanParam(name: 'startGazeboSimu', defaultValue: false, description: 'Automatically start Gazebo simulation on server?')
     }
 
     stages {
@@ -28,6 +29,9 @@ pipeline {
                     }
                 }
                 stage('Start Simulation') {
+                    when {
+                        expression { params.startGazeboSimu == true }
+                    }
                     steps {
                         script {
                             // Configuration NoMachine avec la clé SSH
