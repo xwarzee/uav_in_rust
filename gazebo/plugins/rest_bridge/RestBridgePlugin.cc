@@ -75,10 +75,10 @@ void RestBridgePlugin::Configure(const Entity &entity,
             });
     }
 
-    // Verify all drones were found
+    // Verify all drones were found (will retry in PreUpdate if not found)
     for (const auto &droneName : droneNames) {
         if (droneEntities.find(droneName) == droneEntities.end()) {
-            ignerr << "Warning: Drone '" << droneName << "' not found in world!" << std::endl;
+            ignmsg << "Note: Drone '" << droneName << "' not found yet, will search again during simulation." << std::endl;
         }
     }
 
@@ -92,6 +92,27 @@ void RestBridgePlugin::Configure(const Entity &entity,
 void RestBridgePlugin::PreUpdate(const UpdateInfo &info,
                                   EntityComponentManager &ecm) {
     std::lock_guard<std::mutex> lock(commandMutex);
+
+    // Lazy search for drones that weren't found during Configure
+    if (droneEntities.size() < droneNames.size()) {
+        for (const auto &droneName : droneNames) {
+            if (droneEntities.find(droneName) == droneEntities.end()) {
+                // Try to find this drone
+                ecm.Each<components::Model, components::Name>(
+                    [&](const Entity &entity,
+                        const components::Model *,
+                        const components::Name *name) -> bool {
+                        if (name->Data() == droneName) {
+                            droneEntities[droneName] = entity;
+                            ignmsg << "Found drone entity (lazy): " << droneName
+                                  << " (Entity: " << entity << ")" << std::endl;
+                            return false;  // Stop searching once found
+                        }
+                        return true;  // Continue searching
+                    });
+            }
+        }
+    }
 
     // Get time delta
     double dt = std::chrono::duration<double>(info.dt).count();
