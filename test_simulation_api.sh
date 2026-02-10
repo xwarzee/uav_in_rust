@@ -32,7 +32,7 @@ test_endpoint() {
     fi
 
     http_code=$(echo "$response" | tail -n1)
-    body=$(echo "$response" | head -n-1)
+    body=$(echo "$response" | sed '$d')
 
     if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
         echo -e "  ${GREEN}✓${NC} Status: $http_code"
