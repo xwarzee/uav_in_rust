@@ -85,46 +85,104 @@
       </link>
     </model>
 
-    <!-- Grid for reference -->
-    <model name="grid">
-      <static>true</static>
-      <link name="link">
-        <visual name="visual">
-          <cast_shadows>false</cast_shadows>
+    <!-- Drone 1 (inline model) -->
+    <model name="drone_1">
+      <pose>0 0 0.5 0 0 0</pose>
+      <link name="base_link">
+        <inertial>
+          <mass>1.5</mass>
+          <inertia>
+            <ixx>0.03</ixx>
+            <iyy>0.03</iyy>
+            <izz>0.04</izz>
+          </inertia>
+        </inertial>
+        <collision name="collision">
           <geometry>
-            <plane>
-              <normal>0 0 1</normal>
-              <size>100 100</size>
-            </plane>
+            <box>
+              <size>0.3 0.3 0.15</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="body_visual">
+          <geometry>
+            <box>
+              <size>0.3 0.3 0.15</size>
+            </box>
           </geometry>
           <material>
-            <ambient>0.5 0.5 0.5 0.3</ambient>
-            <diffuse>0.7 0.7 0.7 0.4</diffuse>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
           </material>
         </visual>
       </link>
     </model>
 
-    <!-- Drone 1 (Red) -->
-    <include>
-      <uri>model://x3_uav</uri>
-      <name>drone_1</name>
-      <pose>0 0 0.5 0 0 0</pose>
-    </include>
-
-    <!-- Drone 2 (Green) -->
-    <include>
-      <uri>model://x3_uav</uri>
-      <name>drone_2</name>
+    <!-- Drone 2 (inline model) -->
+    <model name="drone_2">
       <pose>5 0 0.5 0 0 0</pose>
-    </include>
+      <link name="base_link">
+        <inertial>
+          <mass>1.5</mass>
+          <inertia>
+            <ixx>0.03</ixx>
+            <iyy>0.03</iyy>
+            <izz>0.04</izz>
+          </inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.3 0.3 0.15</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="body_visual">
+          <geometry>
+            <box>
+              <size>0.3 0.3 0.15</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0 1 0 1</ambient>
+            <diffuse>0 1 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
 
-    <!-- Drone 3 (Blue) -->
-    <include>
-      <uri>model://x3_uav</uri>
-      <name>drone_3</name>
+    <!-- Drone 3 (inline model) -->
+    <model name="drone_3">
       <pose>-5 0 0.5 0 0 0</pose>
-    </include>
+      <link name="base_link">
+        <inertial>
+          <mass>1.5</mass>
+          <inertia>
+            <ixx>0.03</ixx>
+            <iyy>0.03</iyy>
+            <izz>0.04</izz>
+          </inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.3 0.3 0.15</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="body_visual">
+          <geometry>
+            <box>
+              <size>0.3 0.3 0.15</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0 0 1 1</ambient>
+            <diffuse>0 0 1 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
 
   </world>
 </sdf>

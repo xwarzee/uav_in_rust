@@ -153,12 +153,5 @@
       </visual>
     </link>
 
-    <!-- Plugin for applying forces/velocities -->
-    <plugin
-      filename="ignition-gazebo-apply-link-wrench-system"
-      name="ignition::gazebo::systems::ApplyLinkWrench">
-      <link_name>base_link</link_name>
-    </plugin>
-
   </model>
 </sdf>
