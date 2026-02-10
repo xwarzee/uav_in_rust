@@ -147,7 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let port: u16 = sub_matches.get_one::<String>("port").unwrap().parse()?;
 
             println!("Starting REST API server on {}:{}...", host, port);
-            api::run_server(swarm, host, port).await?;
+            api::run_server(swarm, config, host, port).await?;
         }
         _ => {
             println!("Use --help for usage information");

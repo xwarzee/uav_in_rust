@@ -1,6 +1,7 @@
 use crate::api::docs::ApiDoc;
 use crate::api::state::AppState;
 use crate::swarm::DroneSwarm;
+use crate::simulation::SimulationConfig;
 use actix_cors::Cors;
 use actix_web::{http, middleware, web, App, HttpServer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -17,12 +18,12 @@ pub fn init_tracing() {
         .init();
 }
 
-pub async fn run_server(swarm: DroneSwarm, host: &str, port: u16) -> std::io::Result<()> {
+pub async fn run_server(swarm: DroneSwarm, config: SimulationConfig, host: &str, port: u16) -> std::io::Result<()> {
     init_tracing();
 
     tracing::info!("Starting UAV Swarm API server at {}:{}", host, port);
 
-    let state = web::Data::new(AppState::new(swarm));
+    let state = web::Data::new(AppState::new_with_config(swarm, config));
 
     let openapi = ApiDoc::openapi();
 

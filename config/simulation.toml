@@ -11,13 +11,13 @@ update_rate_hz = 10.0
 # URL of the Gazebo C++ plugin HTTP server on remote server
 # For local testing: http://localhost:8092
 # For remote server: http://SERVEUR_IP:8092 or http://gazebo.example.com:8092
-bridge_url = "http://localhost:8092"
+bridge_url = "http://gazebo_server:8092"
 
 # Whether Gazebo integration is enabled
-enabled = false
+enabled = true
 
 # Auto-start sync when switching to Gazebo mode
 auto_start = false
 
 # HTTP request timeout in milliseconds (higher for remote servers)
-timeout_ms = 10000
+timeout_ms = 15000
