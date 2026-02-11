@@ -1,0 +1,11 @@
+# Generated PDF files
+pdf/
+*.pdf
+
+# Temporary files from PDF generation
+.pdf_tmp/
+*.mmd
+*.log
+
+# Archived documentation
+*.tar.gz

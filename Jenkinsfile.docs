@@ -1,0 +1,228 @@
+pipeline {
+    agent {
+        docker {
+            image 'pandoc/latex:latest'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+    }
+
+    parameters {
+        choice(
+            name: 'GENERATION_MODE',
+            choices: ['all', 'user_guide', 'deployment_guide', 'changelog', 'readme'],
+            description: 'Select which documentation to generate'
+        )
+        booleanParam(
+            name: 'PUBLISH_TO_ARTIFACTORY',
+            defaultValue: false,
+            description: 'Publish PDFs to Artifactory'
+        )
+    }
+
+    environment {
+        OUTPUT_DIR = 'doc/man/pdf'
+        ARTIFACT_NAME = "uav-swarm-docs-${env.BUILD_NUMBER}.tar.gz"
+    }
+
+    stages {
+        stage('Prepare Environment') {
+            steps {
+                script {
+                    echo "=== UAV Swarm Documentation Build ==="
+                    echo "Build Number: ${env.BUILD_NUMBER}"
+                    echo "Generation Mode: ${params.GENERATION_MODE}"
+                    echo "Git Branch: ${env.GIT_BRANCH}"
+                    echo "Git Commit: ${env.GIT_COMMIT}"
+                }
+
+                // Install dependencies
+                sh '''
+                    echo "Installing dependencies..."
+                    apk add --no-cache nodejs npm bash
+                    npm install -g @mermaid-js/mermaid-cli
+                '''
+            }
+        }
+
+        stage('Validate Markdown') {
+            steps {
+                script {
+                    echo "Validating Markdown files..."
+                    sh '''
+                        cd doc/man
+                        for file in *.md; do
+                            if [ -f "$file" ]; then
+                                echo "Checking $file..."
+                                # Basic validation: file is not empty
+                                if [ ! -s "$file" ]; then
+                                    echo "ERROR: $file is empty"
+                                    exit 1
+                                fi
+                            fi
+                        done
+                    '''
+                }
+            }
+        }
+
+        stage('Generate PDFs') {
+            steps {
+                script {
+                    sh '''
+                        cd doc/man
+                        chmod +x generate_pdf.sh
+
+                        case "${GENERATION_MODE}" in
+                            all)
+                                ./generate_pdf.sh
+                                ;;
+                            user_guide)
+                                ./generate_pdf.sh USER_GUIDE.md
+                                ;;
+                            deployment_guide)
+                                ./generate_pdf.sh DEPLOYMENT_GUIDE.md
+                                ;;
+                            changelog)
+                                ./generate_pdf.sh CHANGELOG.md
+                                ;;
+                            readme)
+                                ./generate_pdf.sh README.md
+                                ;;
+                            *)
+                                echo "Unknown generation mode: ${GENERATION_MODE}"
+                                exit 1
+                                ;;
+                        esac
+                    '''
+                }
+            }
+        }
+
+        stage('Verify PDFs') {
+            steps {
+                script {
+                    echo "Verifying generated PDFs..."
+                    sh '''
+                        cd doc/man/pdf
+
+                        if [ ! -d "." ] || [ -z "$(ls -A .)" ]; then
+                            echo "ERROR: No PDFs were generated"
+                            exit 1
+                        fi
+
+                        for pdf in *.pdf; do
+                            if [ -f "$pdf" ]; then
+                                size=$(stat -f%z "$pdf" 2>/dev/null || stat -c%s "$pdf")
+                                if [ "$size" -lt 1024 ]; then
+                                    echo "ERROR: $pdf is too small ($size bytes)"
+                                    exit 1
+                                fi
+                                echo "✓ $pdf: $size bytes"
+                            fi
+                        done
+
+                        echo "All PDFs verified successfully"
+                    '''
+                }
+            }
+        }
+
+        stage('Archive PDFs') {
+            steps {
+                script {
+                    echo "Creating documentation archive..."
+                    sh """
+                        cd doc/man
+                        tar -czf ${ARTIFACT_NAME} pdf/*.pdf pdf/generation.log
+                        mv ${ARTIFACT_NAME} ../../
+                    """
+
+                    // Archive artifacts in Jenkins
+                    archiveArtifacts artifacts: "${ARTIFACT_NAME}, ${OUTPUT_DIR}/*.pdf, ${OUTPUT_DIR}/generation.log",
+                                     fingerprint: true,
+                                     allowEmptyArchive: false
+                }
+            }
+        }
+
+        stage('Publish to Artifactory') {
+            when {
+                expression { params.PUBLISH_TO_ARTIFACTORY == true }
+            }
+            steps {
+                script {
+                    echo "Publishing to Artifactory..."
+                    // Replace with your Artifactory configuration
+                    sh """
+                        # Example using curl (configure with your Artifactory URL and credentials)
+                        # curl -u \${ARTIFACTORY_USER}:\${ARTIFACTORY_PASSWORD} \\
+                        #      -T ${ARTIFACT_NAME} \\
+                        #      "https://artifactory.your-domain.com/artifactory/uav-swarm-docs/${ARTIFACT_NAME}"
+
+                        echo "NOTE: Configure Artifactory upload in this stage"
+                    """
+                }
+            }
+        }
+
+        stage('Generate Report') {
+            steps {
+                script {
+                    sh '''
+                        cd doc/man/pdf
+
+                        echo "=== PDF Generation Report ===" > report.txt
+                        echo "" >> report.txt
+                        echo "Build Number: ${BUILD_NUMBER}" >> report.txt
+                        echo "Build Date: $(date)" >> report.txt
+                        echo "Git Commit: ${GIT_COMMIT}" >> report.txt
+                        echo "" >> report.txt
+                        echo "Generated PDFs:" >> report.txt
+                        ls -lh *.pdf >> report.txt
+                        echo "" >> report.txt
+                        echo "Total Size:" >> report.txt
+                        du -sh . >> report.txt
+                    '''
+
+                    // Archive report
+                    archiveArtifacts artifacts: "${OUTPUT_DIR}/report.txt"
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✓ Documentation build successful!"
+            echo "PDFs available in: ${OUTPUT_DIR}"
+
+            // Optional: Send notification
+            // emailext subject: "✓ UAV Swarm Docs Build #${BUILD_NUMBER} - SUCCESS",
+            //          body: "Documentation PDFs generated successfully.",
+            //          to: "team@your-domain.com"
+        }
+
+        failure {
+            echo "✗ Documentation build failed!"
+
+            // Optional: Send notification
+            // emailext subject: "✗ UAV Swarm Docs Build #${BUILD_NUMBER} - FAILED",
+            //          body: "Documentation build failed. Check console output.",
+            //          to: "team@your-domain.com"
+        }
+
+        always {
+            // Cleanup
+            cleanWs(
+                deleteDirs: true,
+                patterns: [[pattern: 'doc/man/.pdf_tmp', type: 'INCLUDE']]
+            )
+        }
+    }
+}

@@ -117,10 +117,32 @@ curl -X POST http://localhost:8080/api/missions \
 
 ### Documentation
 
-Comprehensive UML diagrams and architecture documentation are available in the `doc/software/` folder:
+#### User & Deployment Guides
 
-- **[ARCHITECTURE.md](doc/software/ARCHITECTURE.md)** - Complete architecture documentation with UML diagrams
-- **[VIEWING_DIAGRAMS.md](doc/software/VIEWING_DIAGRAMS.md)** - Guide for viewing diagrams in different environments
+Complete documentation with UML diagrams and deployment scenarios in `doc/man/`:
+
+- **[USER_GUIDE.md](doc/man/USER_GUIDE.md)** - Complete user guide with:
+  - System architecture and UML class diagrams
+  - Two deployment scenarios (Rust local + Gazebo remote, or unified server)
+  - Installation and configuration instructions
+  - API REST reference
+  - Troubleshooting guide
+
+- **[DEPLOYMENT_GUIDE.md](doc/man/DEPLOYMENT_GUIDE.md)** - Technical deployment guide:
+  - Infrastructure as Code (Terraform)
+  - Docker/Docker Compose setup
+  - Network and security configuration (firewall, VPN)
+  - Monitoring (Prometheus, Grafana, ELK)
+  - Maintenance scripts and backup procedures
+
+- **[CHANGELOG.md](doc/man/CHANGELOG.md)** - Version history and migration guides
+
+#### Software Architecture
+
+UML diagrams and architecture documentation in `doc/software/`:
+
+- **[ARCHITECTURE.md](doc/software/ARCHITECTURE.md)** - Complete architecture documentation
+- **[VIEWING_DIAGRAMS.md](doc/software/VIEWING_DIAGRAMS.md)** - Guide for viewing diagrams
 - **Individual Diagrams**:
   - [Class Diagram](doc/software/class_diagram.puml) - System structure
   - [Module Diagram](doc/software/module_diagram.puml) - Dependencies
@@ -129,7 +151,7 @@ Comprehensive UML diagrams and architecture documentation are available in the `
   - [State Diagram](doc/software/state_diagram.puml) - Drone states
   - [Activity Diagram](doc/software/activity_diagram_simulation.puml) - Simulation flow
 
-All diagrams are available as both PlantUML source files (`.puml`) and rendered images (PNG) in `doc/software/images/`.
+All diagrams are available as both PlantUML source files (`.puml`) and rendered images (PNG).
 
 ## Example Session
 
