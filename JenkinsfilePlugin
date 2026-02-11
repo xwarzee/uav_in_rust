@@ -18,11 +18,24 @@ pipeline {
                 stage('Deploy Gazebo Plugin') {
                     steps {
                         script {
-                            // Configuration NoMachine avec la clé SSH
                             withCredentials([sshUserPrivateKey(credentialsId: 'gazebo_ssh_key', keyFileVariable: 'SSH_KEY')]) {
                             sh """
                                 ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} 'mkdir -p /home/ubuntu/uav_in_rust/'
                                 scp -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r gazebo/ ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER}:/home/ubuntu/uav_in_rust/
+                            """
+                            }
+                        }
+                    }
+                }
+                stage('Deploy Uav_swarm App') {
+                    steps {
+                        script {
+                            withCredentials([sshUserPrivateKey(credentialsId: 'gazebo_ssh_key', keyFileVariable: 'SSH_KEY')]) {
+                            sh """
+                                cargo build --verbose
+                                scp -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null target/debug/uav_swarm ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER}:/home/ubuntu/uav_in_rust/
+                                scp -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r config ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER}:/home/ubuntu/uav_in_rust/
+                                scp -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null test_simulation_api.sh ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER}:/home/ubuntu/uav_in_rust/
                             """
                             }
                         }
@@ -34,13 +47,13 @@ pipeline {
                     }
                     steps {
                         script {
-                            // Configuration NoMachine avec la clé SSH
                             withCredentials([sshUserPrivateKey(credentialsId: 'gazebo_ssh_key', keyFileVariable: 'SSH_KEY')]) {
                             sh """
-                                # Configuration DNS
                                 ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} 'sudo resolvectl dns ens3 8.8.8.8 8.8.4.4 1.1.1.1'
                                 ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} 'sudo systemctl restart systemd-resolved'
-                                ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} '/home/ubuntu/uav_in_rust/gazebo/launch/start_simulation.sh --headless'
+                                ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} './uav_in_rust/uav_swarm --mode gazebo --config config/simulation.toml serve &'
+                                ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} './uav_in_rust/gazebo/launch/start_simulation.sh --headless &'
+                                ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} './uav_in_rust/test_simulation_api.sh'
                             """
                             }
                         }
