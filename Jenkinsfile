@@ -547,7 +547,41 @@ pipeline {
                 script {
                     echo " Generating Users Guide..."
                     sh """
+                        sudo apt-get install pandoc
+                        pandoc --version
+                        sudo apt install texlive-full ## All fonts UTF8 compatible for (Lua)LaTeX
+                        # sudo apt-get install texlive-latex-base texlive-fonts-recommended texlive-latex-extra
+                        sudo apt update -y && apt upgrade -y
+                        sudo apt install -y \
+                            libnss3 \
+                            libxss1 \
+                            libasound2 \
+                            libatk1.0-0 \
+                            libatk-bridge2.0-0 \
+                            libcups2 \
+                            libdrm2 \
+                            libxkbcommon0 \
+                            libxcomposite1 \
+                            libxdamage1 \
+                            libxrandr2 \
+                            libgbm1 \
+                            libgtk-3-0 \
+                            libx11-xcb1 \
+                            libxcursor1 \
+                            libxi-dev \
+                            libxtst-dev \
+                            libpangocairo
+                        sudo npm install -g n
+                        n lts
+                        hash -r
+                        sudo wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+                        sudo apt install ./google-chrome-stable_current_amd64.deb
+                        sudo rm google-chrome-stable_current_amd64.deb
+                        which google-chrome-stable
+                        sudo PUPPETEER_SKIP_DOWNLOAD=true npm install puppeteer
+                        sudo PUPPETEER_SKIP_DOWNLOAD=true npm install -g @mermaid-js/mermaid-cli
                         npx puppeteer browsers install chrome-headless-shell
+
                         cd doc/man && PUPPETEER_ARGS='--no-sandbox --disable-setuid-sandbox' PUPPETEER_EXECUTABLE_PATH='/usr/bin/google-chrome-stable' ./generate_pdf.sh USER_GUIDE.md
                     """
                 }
