@@ -24,6 +24,10 @@ OUTPUT_DIR="$SCRIPT_DIR/pdf"
 TEMP_DIR="$SCRIPT_DIR/.pdf_tmp"
 LOG_FILE="$OUTPUT_DIR/generation.log"
 
+# mermaid-cli & puppeteer configuration
+PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+PUPPETEER_ARGS="--no-sandbox --disable-setuid-sandbox"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -88,8 +92,8 @@ check_dependencies() {
     fi
 
     # Check LaTeX (optional but recommended for better PDFs)
-    if ! command -v pdflatex &> /dev/null; then
-        log_warning "LaTeX not found - using simplified PDF generation"
+    if ! command -v lualatex &> /dev/null; then
+        log_warning "LuaLaTeX not found - using simplified PDF generation"
         echo "For better PDFs, install: brew install basictex (macOS) or apt install texlive-latex-base (Ubuntu)"
         USE_LATEX=false
     else
@@ -207,7 +211,7 @@ convert_to_pdf() {
         --from markdown
         --to pdf
         --output "$output_file"
-        --pdf-engine=pdflatex
+        --pdf-engine=lualatex
         --variable geometry:margin=1in
         --variable fontsize=11pt
         --variable documentclass=article
