@@ -546,9 +546,10 @@ pipeline {
             steps {
                 script {
                     echo " Generating Users Guide..."
-                    sh '''
-                        cd doc/man && ./generate_pdf.sh USER_GUIDE.md
-                    '''
+                    sh """
+                        npx puppeteer browsers install chrome-headless-shell
+                        cd doc/man && PUPPETEER_ARGS='--no-sandbox --disable-setuid-sandbox' PUPPETEER_EXECUTABLE_PATH='/usr/bin/google-chrome-stable' ./generate_pdf.sh USER_GUIDE.md
+                    """
                 }
             }
             post {
