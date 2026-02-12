@@ -25,7 +25,7 @@ TEMP_DIR="$SCRIPT_DIR/.pdf_tmp"
 LOG_FILE="$OUTPUT_DIR/generation.log"
 
 # mermaid-cli & puppeteer configuration
-PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+PUPPETEER_EXECUTABLE_PATH="/usr/bin/google-chrome-stable"
 PUPPETEER_ARGS="--no-sandbox --disable-setuid-sandbox"
 
 # Colors for output
