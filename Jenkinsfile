@@ -570,7 +570,7 @@ pipeline {
                             libxcursor1 \
                             libxi-dev \
                             libxtst-dev \
-                            libpangocairo
+                            libpangocairo-1.0-0
                         sudo npm install -g n
                         n lts
                         hash -r
