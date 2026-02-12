@@ -582,7 +582,11 @@ pipeline {
                         sudo PUPPETEER_SKIP_DOWNLOAD=true npm install -g @mermaid-js/mermaid-cli
                         npx puppeteer browsers install chrome-headless-shell
 
-                        cd doc/man && PUPPETEER_ARGS='--no-sandbox --disable-setuid-sandbox' PUPPETEER_EXECUTABLE_PATH='/usr/bin/google-chrome-stable' ./generate_pdf.sh USER_GUIDE.md
+                        # Generate USER GUIDE only
+                        # cd doc/man && PUPPETEER_ARGS='--no-sandbox --disable-setuid-sandbox' PUPPETEER_EXECUTABLE_PATH='/usr/bin/google-chrome-stable' ./generate_pdf.sh USER_GUIDE.md
+                        # Generate all PDF docs
+                        cd doc/man && PUPPETEER_ARGS='--no-sandbox --disable-setuid-sandbox' PUPPETEER_EXECUTABLE_PATH='/usr/bin/google-chrome-stable' ./generate_pdf.sh
+
                     """
                 }
             }
