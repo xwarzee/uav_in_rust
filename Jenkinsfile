@@ -536,6 +536,27 @@ pipeline {
             }
         }
 
+        stage('Generate Users Guide') {
+            when {
+                anyOf {
+                    not { branch 'main' }
+                    not { buildingTag() }
+                }
+            }
+            steps {
+                script {
+                    echo " Generating Users Guide..."
+                    sh '''
+                        cd doc/man && ./generate_pdf.sh USER_GUIDE.md
+                    '''
+                }
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'doc/man/pdf/USER_GUIDE.pdf', fingerprint: true
+                }
+            }
+        }
         stage('Test Summary') {
             when {
                 anyOf {
@@ -633,6 +654,7 @@ EOF
                 }
             }
         }
+
 
         stage('Release Validation') {
             when {

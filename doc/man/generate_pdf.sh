@@ -110,9 +110,12 @@ check_dependencies() {
 #######################################
 
 setup_directories() {
+    
+    # log function output dir creation
+    mkdir -p "$OUTPUT_DIR"
+
     log "Setting up directories..."
 
-    mkdir -p "$OUTPUT_DIR"
     mkdir -p "$TEMP_DIR"
 
     # Initialize log file
