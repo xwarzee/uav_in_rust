@@ -547,9 +547,9 @@ pipeline {
                 script {
                     echo " Generating Users Guide..."
                     sh """
-                        sudo apt-get install pandoc
+                        sudo apt-get install pandoc -y
                         pandoc --version
-                        sudo apt install texlive-full ## All fonts UTF8 compatible for (Lua)LaTeX
+                        sudo apt install texlive-full -y ## All fonts UTF8 compatible for (Lua)LaTeX
                         # sudo apt-get install texlive-latex-base texlive-fonts-recommended texlive-latex-extra
                         sudo apt update -y && apt upgrade -y
                         sudo apt install -y \
@@ -575,7 +575,7 @@ pipeline {
                         n lts
                         hash -r
                         sudo wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-                        sudo apt install ./google-chrome-stable_current_amd64.deb
+                        sudo apt install -y ./google-chrome-stable_current_amd64.deb
                         sudo rm google-chrome-stable_current_amd64.deb
                         which google-chrome-stable
                         sudo PUPPETEER_SKIP_DOWNLOAD=true npm install puppeteer
