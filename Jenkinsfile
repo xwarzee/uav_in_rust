@@ -592,7 +592,7 @@ pipeline {
             }
             post {
                 success {
-                    archiveArtifacts artifacts: 'doc/man/pdf/USER_GUIDE.pdf', fingerprint: true
+                    archiveArtifacts artifacts: 'doc/man/pdf/*.pdf', fingerprint: true
                 }
             }
         }
