@@ -4,6 +4,7 @@ use crate::drone::{Drone, Position, Velocity};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -36,11 +37,25 @@ struct HealthResponse {
 
 impl GazeboSimulationEngine {
     pub fn new(bridge_url: String, timeout_ms: u64) -> Self {
+        // Create a robust HTTP client with explicit configuration
+        let client = Client::builder()
+            .timeout(Duration::from_millis(timeout_ms))
+            .connect_timeout(Duration::from_secs(10))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .pool_max_idle_per_host(2)
+            .user_agent("uav-swarm-rust/1.0")
+            .tcp_keepalive(Duration::from_secs(60))
+            .build()
+            .unwrap();
+
+        tracing::info!(
+            "Created Gazebo client with timeout={}ms, bridge_url={}",
+            timeout_ms,
+            bridge_url
+        );
+
         Self {
-            client: Client::builder()
-                .timeout(Duration::from_millis(timeout_ms))
-                .build()
-                .unwrap(),
+            client,
             bridge_url,
             connected: false,
         }
@@ -48,23 +63,66 @@ impl GazeboSimulationEngine {
 
     async fn check_connection(&self) -> Result<(), String> {
         let url = format!("{}/health", self.bridge_url);
-        let response = self.client.get(&url)
+
+        tracing::debug!("Checking connection to Gazebo bridge at: {}", url);
+
+        // Send request with explicit headers
+        let response = self.client
+            .get(&url)
+            .header("Accept", "application/json")
+            .header("Connection", "close")  // Prevent connection reuse issues
             .send()
             .await
-            .map_err(|e| format!("Bridge connection failed: {}", e))?;
+            .map_err(|e| {
+                // Detailed error logging
+                if e.is_timeout() {
+                    tracing::error!("Connection timeout to Gazebo bridge: {}", e);
+                    format!("Bridge connection timeout: {}", e)
+                } else if e.is_connect() {
+                    tracing::error!("Failed to connect to Gazebo bridge: {}", e);
+                    format!("Bridge connection failed (cannot connect): {}", e)
+                } else if e.is_request() {
+                    tracing::error!("Request error to Gazebo bridge: {}", e);
+                    format!("Bridge request error: {}", e)
+                } else {
+                    tracing::error!("Unknown error connecting to Gazebo bridge: {}", e);
+                    format!("Bridge connection failed: {}", e)
+                }
+            })?;
 
-        if !response.status().is_success() {
-            return Err(format!("Bridge returned status: {}", response.status()));
+        let status = response.status();
+        tracing::debug!("Received response from Gazebo bridge: HTTP {}", status);
+
+        if !status.is_success() {
+            tracing::error!("Gazebo bridge returned error status: {}", status);
+            return Err(format!("Bridge returned status: {}", status));
         }
 
-        let health: HealthResponse = response.json()
+        // Get response body as text first for better error messages
+        let body = response.text()
             .await
-            .map_err(|e| format!("Failed to parse health response: {}", e))?;
+            .map_err(|e| {
+                tracing::error!("Failed to read response body: {}", e);
+                format!("Failed to read health response: {}", e)
+            })?;
+
+        tracing::debug!("Gazebo bridge health response body: {}", body);
+
+        // Parse JSON
+        let health: HealthResponse = serde_json::from_str(&body)
+            .map_err(|e| {
+                tracing::error!("Failed to parse health response as JSON: {}", e);
+                tracing::error!("Response body was: {}", body);
+                format!("Failed to parse health response: {}", e)
+            })?;
 
         if health.status != "ok" {
+            tracing::error!("Gazebo bridge health check failed: {:?}", health);
             return Err(format!("Bridge health check failed: {:?}", health));
         }
 
+        tracing::info!("Gazebo bridge health check passed: {:?}", health);
+        
         Ok(())
     }
 

@@ -76,7 +76,7 @@ impl DroneSwarm {
 
     pub async fn execute_mission(&mut self, target: Position) {
         let drone_ids: Vec<String> = self.drones.keys().cloned().collect();
-        
+
         if drone_ids.is_empty() {
             println!("No drones available for mission");
             return;
@@ -92,17 +92,51 @@ impl DroneSwarm {
             return;
         }
 
-        println!("Executing mission to ({:.1}, {:.1}, {:.1}) with {} drones", 
+        println!("Executing mission to ({:.1}, {:.1}, {:.1}) with {} drones",
                 target.x, target.y, target.z, drone_ids.len());
 
-        if let Err(e) = self.mission_executor.execute_mission(&mission_id, &mut self.drones).await {
-            println!("Mission failed: {}", e);
+        // Execute mission with simulation engine integration
+        let mut iteration = 0;
+        let max_iterations = 1000; // Safety limit to prevent infinite loops
+
+        loop {
+            // Update drone positions from simulation engine (Gazebo or internal)
+            self.update_swarm().await;
+
+            // Advance mission by one tick
+            match self.tick_mission_by_id(&mission_id) {
+                Ok(true) => {
+                    // Mission still in progress
+                    if iteration % 10 == 0 {
+                        tracing::debug!("Mission in progress, iteration {}", iteration);
+                    }
+                }
+                Ok(false) => {
+                    // Mission completed successfully
+                    println!("Mission completed successfully!");
+                    break;
+                }
+                Err(e) => {
+                    // Mission failed
+                    println!("Mission failed: {}", e);
+                    break;
+                }
+            }
+
+            iteration += 1;
+            if iteration >= max_iterations {
+                println!("Mission timeout after {} iterations", max_iterations);
+                break;
+            }
+
+            // Sleep to match simulation update rate
+            sleep(Duration::from_millis(100)).await;
         }
     }
 
     pub async fn execute_patrol_mission(&mut self, waypoints: Vec<Position>) {
         let drone_ids: Vec<String> = self.drones.keys().cloned().collect();
-        
+
         if drone_ids.is_empty() {
             println!("No drones available for patrol mission");
             return;
@@ -118,17 +152,51 @@ impl DroneSwarm {
             return;
         }
 
-        println!("Executing patrol mission with {} waypoints and {} drones", 
+        println!("Executing patrol mission with {} waypoints and {} drones",
                 waypoints.len(), drone_ids.len());
 
-        if let Err(e) = self.mission_executor.execute_mission(&mission_id, &mut self.drones).await {
-            println!("Patrol mission failed: {}", e);
+        // Execute mission with simulation engine integration
+        let mut iteration = 0;
+        let max_iterations = 2000; // Higher limit for patrol missions
+
+        loop {
+            // Update drone positions from simulation engine (Gazebo or internal)
+            self.update_swarm().await;
+
+            // Advance mission by one tick
+            match self.tick_mission_by_id(&mission_id) {
+                Ok(true) => {
+                    // Mission still in progress
+                    if iteration % 10 == 0 {
+                        tracing::debug!("Patrol mission in progress, iteration {}", iteration);
+                    }
+                }
+                Ok(false) => {
+                    // Mission completed successfully
+                    println!("Patrol mission completed successfully!");
+                    break;
+                }
+                Err(e) => {
+                    // Mission failed
+                    println!("Patrol mission failed: {}", e);
+                    break;
+                }
+            }
+
+            iteration += 1;
+            if iteration >= max_iterations {
+                println!("Patrol mission timeout after {} iterations", max_iterations);
+                break;
+            }
+
+            // Sleep to match simulation update rate
+            sleep(Duration::from_millis(100)).await;
         }
     }
 
     pub async fn execute_search_mission(&mut self, center: Position, radius: f64) {
         let drone_ids: Vec<String> = self.drones.keys().cloned().collect();
-        
+
         if drone_ids.is_empty() {
             println!("No drones available for search mission");
             return;
@@ -144,11 +212,45 @@ impl DroneSwarm {
             return;
         }
 
-        println!("Executing search mission at ({:.1}, {:.1}, {:.1}) with radius {:.1} using {} drones", 
+        println!("Executing search mission at ({:.1}, {:.1}, {:.1}) with radius {:.1} using {} drones",
                 center.x, center.y, center.z, radius, drone_ids.len());
 
-        if let Err(e) = self.mission_executor.execute_mission(&mission_id, &mut self.drones).await {
-            println!("Search mission failed: {}", e);
+        // Execute mission with simulation engine integration
+        let mut iteration = 0;
+        let max_iterations = 3000; // Higher limit for search missions
+
+        loop {
+            // Update drone positions from simulation engine (Gazebo or internal)
+            self.update_swarm().await;
+
+            // Advance mission by one tick
+            match self.tick_mission_by_id(&mission_id) {
+                Ok(true) => {
+                    // Mission still in progress
+                    if iteration % 10 == 0 {
+                        tracing::debug!("Search mission in progress, iteration {}", iteration);
+                    }
+                }
+                Ok(false) => {
+                    // Mission completed successfully
+                    println!("Search mission completed successfully!");
+                    break;
+                }
+                Err(e) => {
+                    // Mission failed
+                    println!("Search mission failed: {}", e);
+                    break;
+                }
+            }
+
+            iteration += 1;
+            if iteration >= max_iterations {
+                println!("Search mission timeout after {} iterations", max_iterations);
+                break;
+            }
+
+            // Sleep to match simulation update rate
+            sleep(Duration::from_millis(100)).await;
         }
     }
 

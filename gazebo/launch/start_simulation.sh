@@ -84,7 +84,7 @@ if [ ! -f "$PLUGIN_PATH" ]; then
 fi
 
 # Check if world file exists
-WORLD_FILE="$PROJECT_ROOT/gazebo/worlds/uav_swarm.sdf"
+WORLD_FILE="$PROJECT_ROOT/gazebo/worlds/uav_swarm_inline.sdf"
 if [ ! -f "$WORLD_FILE" ]; then
     echo "Error: World file not found at:"
     echo "  $WORLD_FILE"
