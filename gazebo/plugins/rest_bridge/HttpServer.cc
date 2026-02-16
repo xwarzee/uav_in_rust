@@ -61,7 +61,9 @@ void HttpServer::RunServer() {
     server_ = std::make_unique<httplib::Server>();
 
     // Health check endpoint
-    server_->Get("/health", [this](const httplib::Request &, httplib::Response &res) {
+    server_->Get("/health", [this](const httplib::Request &req, httplib::Response &res) {
+        ignmsg << "[HTTP] GET /health from " << req.remote_addr << std::endl;
+
         std::ostringstream json;
         json << "{"
              << "\"status\": \"ok\","
@@ -77,26 +79,35 @@ void HttpServer::RunServer() {
         }
         json << "]}";
 
+        ignmsg << "[HTTP] Responding to /health: " << droneNames.size() << " drones, sync="
+               << (plugin_->IsSyncEnabled() ? "enabled" : "disabled") << std::endl;
+
         res.set_content(json.str(), "application/json");
     });
 
     // Start sync endpoint
-    server_->Post("/start", [this](const httplib::Request &, httplib::Response &res) {
+    server_->Post("/start", [this](const httplib::Request &req, httplib::Response &res) {
+        ignmsg << "[HTTP] POST /start from " << req.remote_addr << std::endl;
         plugin_->SetSyncEnabled(true);
-        ignmsg << "Sync enabled (Gazebo → Rust)" << std::endl;
+        ignmsg << "[HTTP] Sync enabled (Gazebo → Rust)" << std::endl;
         res.set_content("{\"message\": \"Sync started\"}", "application/json");
     });
 
     // Stop sync endpoint
-    server_->Post("/stop", [this](const httplib::Request &, httplib::Response &res) {
+    server_->Post("/stop", [this](const httplib::Request &req, httplib::Response &res) {
+        ignmsg << "[HTTP] POST /stop from " << req.remote_addr << std::endl;
         plugin_->SetSyncEnabled(false);
-        ignmsg << "Sync disabled" << std::endl;
+        ignmsg << "[HTTP] Sync disabled" << std::endl;
         res.set_content("{\"message\": \"Sync stopped\"}", "application/json");
     });
 
     // Get drone states endpoint
-    server_->Get("/drones/states", [this](const httplib::Request &, httplib::Response &res) {
+    server_->Get("/drones/states", [this](const httplib::Request &req, httplib::Response &res) {
+        ignmsg << "[HTTP] GET /drones/states from " << req.remote_addr << std::endl;
+
         auto states = plugin_->GetDroneStates();
+
+        ignmsg << "[HTTP] Returning states for " << states.size() << " drones" << std::endl;
 
         std::ostringstream json;
         json << "{";
@@ -128,6 +139,9 @@ void HttpServer::RunServer() {
     server_->Post("/drones/:id/command", [this](const httplib::Request &req, httplib::Response &res) {
         std::string droneId = req.path_params.at("id");
 
+        ignmsg << "[HTTP] POST /drones/" << droneId << "/command from " << req.remote_addr << std::endl;
+        ignmsg << "[HTTP] Request body: " << req.body << std::endl;
+
         // Parse JSON body for target position
         // Expected: {"target_position": {"x": 1.0, "y": 2.0, "z": 3.0}}
         std::string body = req.body;
@@ -147,12 +161,17 @@ void HttpServer::RunServer() {
                 ignition::math::Vector3d targetPos(x, y, z);
                 plugin_->SetDroneCommand(droneId, targetPos);
 
+                ignmsg << "[HTTP] Command parsed successfully: " << droneId
+                       << " -> (" << x << ", " << y << ", " << z << ")" << std::endl;
+
                 res.set_content("{\"message\": \"Command received\"}", "application/json");
             } catch (const std::exception &e) {
+                ignerr << "[HTTP] Failed to parse command: " << e.what() << std::endl;
                 res.status = 400;
                 res.set_content("{\"error\": \"Invalid JSON format\"}", "application/json");
             }
         } else {
+            ignerr << "[HTTP] Missing coordinates in request body" << std::endl;
             res.status = 400;
             res.set_content("{\"error\": \"Missing x, y, or z coordinates\"}", "application/json");
         }
