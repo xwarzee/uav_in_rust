@@ -128,10 +128,21 @@ void RestBridgePlugin::PreUpdate(const UpdateInfo &info,
     double dt = std::chrono::duration<double>(info.dt).count();
     if (dt <= 0) dt = 0.01;  // Default to 10ms if no time info
 
+    static int preUpdateCount = 0;
+    preUpdateCount++;
+    bool shouldLog = (preUpdateCount % 100 == 0);
+
+    if (shouldLog && !droneCommands.empty()) {
+        ignmsg << "[PreUpdate] Applying " << droneCommands.size() << " commands" << std::endl;
+    }
+
     // Apply commands to drones
     for (const auto &[droneId, targetPos] : droneCommands) {
         auto it = droneEntities.find(droneId);
         if (it == droneEntities.end()) {
+            if (shouldLog) {
+                ignwarn << "[PreUpdate] Drone " << droneId << " not found in droneEntities!" << std::endl;
+            }
             continue;
         }
 
@@ -141,6 +152,9 @@ void RestBridgePlugin::PreUpdate(const UpdateInfo &info,
         // Get current pose
         auto poseComp = ecm.Component<components::Pose>(droneEntity);
         if (!poseComp) {
+            if (shouldLog) {
+                ignwarn << "[PreUpdate] No Pose component for " << droneId << std::endl;
+            }
             continue;
         }
 
@@ -151,12 +165,22 @@ void RestBridgePlugin::PreUpdate(const UpdateInfo &info,
         ignition::math::Vector3d error = targetPos - currentPos;
         double distance = error.Length();
 
+        if (shouldLog) {
+            ignmsg << "[PreUpdate] " << droneId << ": pos=(" << currentPos.X() << ", " << currentPos.Y() << ", " << currentPos.Z()
+                   << "), target=(" << targetPos.X() << ", " << targetPos.Y() << ", " << targetPos.Z()
+                   << "), distance=" << distance << std::endl;
+        }
+
         if (distance > 0.01) {  // Only move if not at target
             // Maximum speed: 5 m/s
             double maxSpeed = 5.0;
             double moveDistance = std::min(maxSpeed * dt, distance);
 
             ignition::math::Vector3d newPos = currentPos + error.Normalized() * moveDistance;
+
+            if (shouldLog) {
+                ignmsg << "[PreUpdate] Moving " << droneId << " by " << moveDistance << " meters" << std::endl;
+            }
 
             // Create new pose with updated position (keep same rotation)
             ignition::math::Pose3d newPose(newPos, currentPose.Rot());
