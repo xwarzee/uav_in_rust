@@ -195,20 +195,47 @@ void RestBridgePlugin::PostUpdate(const UpdateInfo &/*info*/,
                                    const EntityComponentManager &ecm) {
     std::lock_guard<std::mutex> lock(stateMutex);
 
+    static int postUpdateCount = 0;
+    postUpdateCount++;
+    bool shouldLogPost = (postUpdateCount % 100 == 0);
+
+    if (shouldLogPost) {
+        ignmsg << "[PostUpdate] Update #" << postUpdateCount << ", updating states for "
+               << droneEntities.size() << " drones" << std::endl;
+    }
+
     // Always update drone states for HTTP GET requests
     for (const auto &[droneId, droneEntity] : droneEntities) {
         auto poseComp = ecm.Component<components::Pose>(droneEntity);
-        auto velComp = ecm.Component<components::LinearVelocity>(droneEntity);
 
-        if (!poseComp || !velComp) {
+        if (!poseComp) {
+            if (shouldLogPost) {
+                ignwarn << "[PostUpdate] Drone " << droneId << " has no Pose component, skipping" << std::endl;
+            }
             continue;
         }
 
         ignition::math::Pose3d pose = poseComp->Data();
-        ignition::math::Vector3d velocity = velComp->Data();
+
+        // LinearVelocity is optional - use zero velocity if not available
+        ignition::math::Vector3d velocity(0, 0, 0);
+        auto velComp = ecm.Component<components::LinearVelocity>(droneEntity);
+        if (velComp) {
+            velocity = velComp->Data();
+        } else if (shouldLogPost && postUpdateCount == 100) {
+            // Log once that velocity component is missing
+            ignmsg << "[PostUpdate] Note: Drone " << droneId << " has no LinearVelocity component, using zero velocity" << std::endl;
+        }
 
         // Store states for HTTP GET /drones/states endpoint
         droneStates[droneId] = std::make_pair(pose, velocity);
+
+        if (shouldLogPost) {
+            ignmsg << "[PostUpdate] Updated " << droneId << ": pos=("
+                   << pose.Pos().X() << ", " << pose.Pos().Y() << ", " << pose.Pos().Z()
+                   << "), vel=(" << velocity.X() << ", " << velocity.Y() << ", " << velocity.Z()
+                   << ")" << std::endl;
+        }
 
         // Optionally send to Rust API if sync is enabled (push model)
         if (syncEnabled) {
