@@ -106,6 +106,16 @@ void RestBridgePlugin::PreUpdate(const UpdateInfo &info,
                             droneEntities[droneName] = entity;
                             ignmsg << "Found drone entity (lazy): " << droneName
                                   << " (Entity: " << entity << ")" << std::endl;
+
+                            // Initialize droneStates with default values immediately
+                            {
+                                std::lock_guard<std::mutex> stateLock(stateMutex);
+                                ignition::math::Pose3d defaultPose;
+                                ignition::math::Vector3d defaultVel;
+                                droneStates[droneName] = std::make_pair(defaultPose, defaultVel);
+                                ignmsg << "Initialized state for " << droneName << std::endl;
+                            }
+
                             return false;  // Stop searching once found
                         }
                         return true;  // Continue searching
