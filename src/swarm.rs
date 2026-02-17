@@ -103,6 +103,15 @@ impl DroneSwarm {
             // Update drone positions from simulation engine (Gazebo or internal)
             self.update_swarm().await;
 
+            // Send commands to simulation engine for drones with targets
+            for (drone_id, drone) in &self.drones {
+                if let Some(target) = drone.target_position {
+                    if let Err(e) = self.simulation_engine.send_command(drone_id, target).await {
+                        tracing::error!("Failed to send command to {}: {}", drone_id, e);
+                    }
+                }
+            }
+
             // Advance mission by one tick
             match self.tick_mission_by_id(&mission_id) {
                 Ok(true) => {
@@ -163,6 +172,15 @@ impl DroneSwarm {
             // Update drone positions from simulation engine (Gazebo or internal)
             self.update_swarm().await;
 
+            // Send commands to simulation engine for drones with targets
+            for (drone_id, drone) in &self.drones {
+                if let Some(target) = drone.target_position {
+                    if let Err(e) = self.simulation_engine.send_command(drone_id, target).await {
+                        tracing::error!("Failed to send command to {}: {}", drone_id, e);
+                    }
+                }
+            }
+
             // Advance mission by one tick
             match self.tick_mission_by_id(&mission_id) {
                 Ok(true) => {
@@ -222,6 +240,15 @@ impl DroneSwarm {
         loop {
             // Update drone positions from simulation engine (Gazebo or internal)
             self.update_swarm().await;
+
+            // Send commands to simulation engine for drones with targets
+            for (drone_id, drone) in &self.drones {
+                if let Some(target) = drone.target_position {
+                    if let Err(e) = self.simulation_engine.send_command(drone_id, target).await {
+                        tracing::error!("Failed to send command to {}: {}", drone_id, e);
+                    }
+                }
+            }
 
             // Advance mission by one tick
             match self.tick_mission_by_id(&mission_id) {
