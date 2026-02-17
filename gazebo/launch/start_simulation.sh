@@ -134,8 +134,8 @@ echo ""
 # Launch with or without GUI
 if [ "$HEADLESS" = true ]; then
     # Server mode: no GUI, lighter on resources
-    ign gazebo -s "$WORLD_FILE" --verbose 2
+    ign gazebo -s "$WORLD_FILE" --verbose 4
 else
     # Full mode: with GUI
-    ign gazebo "$WORLD_FILE" --verbose 2
+    ign gazebo "$WORLD_FILE" --verbose 4
 fi
