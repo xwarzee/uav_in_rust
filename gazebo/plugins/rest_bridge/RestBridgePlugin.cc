@@ -185,8 +185,15 @@ void RestBridgePlugin::PreUpdate(const UpdateInfo &info,
             // Create new pose with updated position (keep same rotation)
             ignition::math::Pose3d newPose(newPos, currentPose.Rot());
 
-            // Set the new pose using ECM to ensure GUI updates
-            ecm.SetComponentData<components::Pose>(droneEntity, newPose);
+            // Use WorldPoseCmd to command the position (respected by physics)
+            auto worldPoseCmdComp = ecm.Component<components::WorldPoseCmd>(droneEntity);
+            if (!worldPoseCmdComp) {
+                // Create the component if it doesn't exist
+                ecm.CreateComponent(droneEntity, components::WorldPoseCmd(newPose));
+            } else {
+                // Update existing component
+                *worldPoseCmdComp = components::WorldPoseCmd(newPose);
+            }
         }
     }
 }
