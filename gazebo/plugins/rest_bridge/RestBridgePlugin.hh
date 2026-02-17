@@ -65,6 +65,7 @@ private:
     bool syncEnabled;
     std::map<std::string, ignition::gazebo::Entity> droneEntities;
     std::map<std::string, ignition::math::Vector3d> droneCommands;
+    std::map<std::string, std::pair<ignition::math::Pose3d, ignition::math::Vector3d>> droneStates;
 
     // Thread safety
     mutable std::mutex commandMutex;

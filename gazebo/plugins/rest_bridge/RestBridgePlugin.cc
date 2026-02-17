@@ -159,13 +159,9 @@ void RestBridgePlugin::PreUpdate(const UpdateInfo &info,
 
 void RestBridgePlugin::PostUpdate(const UpdateInfo &/*info*/,
                                    const EntityComponentManager &ecm) {
-    if (!syncEnabled) {
-        return;
-    }
-
     std::lock_guard<std::mutex> lock(stateMutex);
 
-    // Read drone states and send to Rust API
+    // Always update drone states for HTTP GET requests
     for (const auto &[droneId, droneEntity] : droneEntities) {
         auto poseComp = ecm.Component<components::Pose>(droneEntity);
         auto velComp = ecm.Component<components::LinearVelocity>(droneEntity);
@@ -177,8 +173,13 @@ void RestBridgePlugin::PostUpdate(const UpdateInfo &/*info*/,
         ignition::math::Pose3d pose = poseComp->Data();
         ignition::math::Vector3d velocity = velComp->Data();
 
-        // Send to Rust API (async in separate thread to avoid blocking)
-        SendDroneStateToRust(droneId, pose, velocity);
+        // Store states for HTTP GET /drones/states endpoint
+        droneStates[droneId] = std::make_pair(pose, velocity);
+
+        // Optionally send to Rust API if sync is enabled (push model)
+        if (syncEnabled) {
+            SendDroneStateToRust(droneId, pose, velocity);
+        }
     }
 }
 
@@ -194,10 +195,8 @@ void RestBridgePlugin::SetDroneCommand(const std::string &drone_id,
 
 std::map<std::string, std::pair<ignition::math::Pose3d, ignition::math::Vector3d>>
 RestBridgePlugin::GetDroneStates() const {
-    std::map<std::string, std::pair<ignition::math::Pose3d, ignition::math::Vector3d>> states;
-    // Note: This would need access to ECM, typically called from PostUpdate context
-    // For now, return empty map - states are sent via HTTP in PostUpdate
-    return states;
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return droneStates;
 }
 
 void RestBridgePlugin::SendDroneStateToRust(const std::string &drone_id,
