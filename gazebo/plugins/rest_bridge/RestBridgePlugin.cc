@@ -185,15 +185,20 @@ void RestBridgePlugin::PreUpdate(const UpdateInfo &info,
             // Create new pose with updated position (keep same rotation)
             ignition::math::Pose3d newPose(newPos, currentPose.Rot());
 
-            // Use WorldPoseCmd to command the position (respected by physics)
-            auto worldPoseCmdComp = ecm.Component<components::WorldPoseCmd>(droneEntity);
-            if (!worldPoseCmdComp) {
-                // Create the component if it doesn't exist
-                ecm.CreateComponent(droneEntity, components::WorldPoseCmd(newPose));
-            } else {
-                // Update existing component
-                *worldPoseCmdComp = components::WorldPoseCmd(newPose);
+            // Update both Pose and WorldPose components
+            auto poseComp = ecm.Component<components::Pose>(droneEntity);
+            if (poseComp) {
+                ecm.SetComponentData<components::Pose>(droneEntity, newPose);
             }
+
+            auto worldPoseComp = ecm.Component<components::WorldPose>(droneEntity);
+            if (worldPoseComp) {
+                ecm.SetComponentData<components::WorldPose>(droneEntity, newPose);
+            }
+
+            // Mark entity as modified to force GUI update
+            ecm.SetChanged(droneEntity, components::Pose::typeId,
+                          ignition::gazebo::ComponentState::PeriodicChange);
         }
     }
 }
