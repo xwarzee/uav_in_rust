@@ -74,7 +74,7 @@ pub async fn set_formation(
         ))
     })?;
 
-    swarm.set_formation(&req.formation_type);
+    swarm.set_formation(&req.formation_type).await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": format!("Formation changed to {}", req.formation_type)

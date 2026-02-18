@@ -46,12 +46,21 @@ impl DroneSwarm {
                 drone_id, initial_position.x, initial_position.y, initial_position.z);
     }
 
-    pub fn set_formation(&mut self, formation_type: &str) {
+    pub async fn set_formation(&mut self, formation_type: &str) {
         if let Some(formation) = FormationType::from_str(formation_type) {
             self.formation_manager.set_formation_type(formation);
 
             // Move all drones to formation positions
             self.formation_manager.update_formation(&mut self.drones);
+
+            // Send commands to simulation engine
+            for (drone_id, drone) in &self.drones {
+                if let Some(target) = drone.target_position {
+                    if let Err(e) = self.simulation_engine.send_command(drone_id, target).await {
+                        tracing::error!("Failed to send formation command to {}: {}", drone_id, e);
+                    }
+                }
+            }
 
             println!("Formation changed to: {}", formation_type);
         } else {

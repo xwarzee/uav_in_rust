@@ -129,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(("formation", sub_matches)) => {
             if let Some(formation_type) = sub_matches.get_one::<String>("type") {
-                swarm.set_formation(formation_type);
+                swarm.set_formation(formation_type).await;
                 println!("Formation set to: {}", formation_type);
             }
         }
