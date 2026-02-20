@@ -4,11 +4,13 @@ mod mission;
 mod swarm;
 mod api;
 mod simulation;
+mod ports;
 
 use clap::{Arg, Command};
 use swarm::DroneSwarm;
 use drone::Position;
 use simulation::{SimulationConfig, SimulationMode, InternalSimulationEngine, GazeboSimulationEngine};
+use simulation::{InternalCommandDispatcher, GazeboCommandDispatcher};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -87,32 +89,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Create simulation engine based on mode
-    let mut engine: Box<dyn simulation::SimulationEngine> = match config.simulation.mode {
-        SimulationMode::Internal => {
-            println!("Using internal simulation engine (Rust physics)");
-            Box::new(InternalSimulationEngine::new())
-        }
-        SimulationMode::Gazebo => {
-            println!("Using Gazebo simulation engine");
-            println!("Gazebo bridge URL: {}", config.gazebo.bridge_url);
-            Box::new(GazeboSimulationEngine::new(
-                config.gazebo.bridge_url.clone(),
-                config.gazebo.timeout_ms,
-            ))
-        }
-    };
+    // Create simulation engine and command dispatcher based on mode
+    let (mut engine, dispatcher): (Box<dyn simulation::SimulationEngine>, Box<dyn ports::CommandDispatcher>) =
+        match config.simulation.mode {
+            SimulationMode::Internal => {
+                println!("Using internal simulation engine (Rust physics)");
+                (
+                    Box::new(InternalSimulationEngine::new()),
+                    Box::new(InternalCommandDispatcher),
+                )
+            }
+            SimulationMode::Gazebo => {
+                println!("Using Gazebo simulation engine");
+                println!("Gazebo bridge URL: {}", config.gazebo.bridge_url);
+                (
+                    Box::new(GazeboSimulationEngine::new(
+                        config.gazebo.bridge_url.clone(),
+                        config.gazebo.timeout_ms,
+                    )),
+                    Box::new(GazeboCommandDispatcher::new(
+                        config.gazebo.bridge_url.clone(),
+                        config.gazebo.timeout_ms,
+                    )),
+                )
+            }
+        };
 
-    // Initialize the engine
-    if let Err(e) = engine.initialize().await {
+    // Initialize the engine (dispatcher needs no initialization)
+    let dispatcher = if let Err(e) = engine.initialize().await {
         eprintln!("Error: Failed to initialize simulation engine: {}", e);
         eprintln!("Falling back to internal simulation mode");
         engine = Box::new(InternalSimulationEngine::new());
         engine.initialize().await?;
-    }
+        let d: Box<dyn ports::CommandDispatcher> = Box::new(InternalCommandDispatcher);
+        d
+    } else {
+        dispatcher
+    };
 
-    // Create swarm with the configured engine
-    let mut swarm = DroneSwarm::new_with_engine(engine);
+    // Create swarm with engine and dispatcher (composition root)
+    let mut swarm = DroneSwarm::new_with_engine_and_dispatcher(engine, dispatcher);
 
     // Initialize 3 drones
     swarm.add_drone("drone_1", Position::new(0.0, 0.0, 10.0));

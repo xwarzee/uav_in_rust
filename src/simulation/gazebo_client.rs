@@ -1,6 +1,7 @@
 use super::engine::SimulationEngine;
 use super::mode::SimulationMode;
 use crate::drone::{Drone, Position, Velocity};
+use crate::ports::CommandDispatcher;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -181,26 +182,6 @@ impl SimulationEngine for GazeboSimulationEngine {
         Ok(())
     }
 
-    async fn send_command(&self, drone_id: &str, target: Position) -> Result<(), String> {
-        if !self.connected {
-            return Err("Bridge not connected".to_string());
-        }
-
-        let url = format!("{}/drones/{}/command", self.bridge_url, drone_id);
-        let command = DroneCommand {
-            target_position: target,
-        };
-
-        self.client.post(&url)
-            .json(&command)
-            .send()
-            .await
-            .map_err(|e| format!("Failed to send command to {}: {}", drone_id, e))?;
-
-        tracing::debug!("Sent command to {} via Gazebo bridge: {:?}", drone_id, target);
-        Ok(())
-    }
-
     fn mode(&self) -> SimulationMode {
         SimulationMode::Gazebo
     }
@@ -217,6 +198,39 @@ impl SimulationEngine for GazeboSimulationEngine {
 
     fn is_connected(&self) -> bool {
         self.connected
+    }
+}
+
+/// Adapter: dispatches movement commands to drones via the Gazebo HTTP bridge
+pub struct GazeboCommandDispatcher {
+    client: Client,
+    bridge_url: String,
+}
+
+impl GazeboCommandDispatcher {
+    pub fn new(bridge_url: String, timeout_ms: u64) -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_millis(timeout_ms))
+            .build()
+            .unwrap_or_default();
+        Self { client, bridge_url }
+    }
+}
+
+#[async_trait]
+impl CommandDispatcher for GazeboCommandDispatcher {
+    async fn send_command(&self, drone_id: &str, target: Position) -> Result<(), String> {
+        let url = format!("{}/drones/{}/command", self.bridge_url, drone_id);
+        let command = DroneCommand { target_position: target };
+
+        self.client.post(&url)
+            .json(&command)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to send command to {}: {}", drone_id, e))?;
+
+        tracing::debug!("Sent command to {} via Gazebo bridge: {:?}", drone_id, target);
+        Ok(())
     }
 }
 

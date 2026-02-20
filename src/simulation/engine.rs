@@ -1,4 +1,4 @@
-use crate::drone::{Drone, Position};
+use crate::drone::Drone;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use super::mode::SimulationMode;
@@ -21,13 +21,6 @@ pub trait SimulationEngine: Send + Sync {
     /// * `drones` - Mutable reference to the drone collection
     /// * `dt` - Time delta since last update (in seconds)
     async fn update_drones(&mut self, drones: &mut HashMap<String, Drone>, dt: f64) -> Result<(), String>;
-
-    /// Send a movement command to a specific drone
-    ///
-    /// # Arguments
-    /// * `drone_id` - ID of the drone to command
-    /// * `target` - Target position for the drone
-    async fn send_command(&self, drone_id: &str, target: Position) -> Result<(), String>;
 
     /// Get the simulation mode of this engine
     fn mode(&self) -> SimulationMode;

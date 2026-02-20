@@ -1,6 +1,7 @@
 use super::engine::SimulationEngine;
 use super::mode::SimulationMode;
 use crate::drone::{Drone, Position};
+use crate::ports::CommandDispatcher;
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -44,13 +45,6 @@ impl SimulationEngine for InternalSimulationEngine {
         Ok(())
     }
 
-    async fn send_command(&self, _drone_id: &str, _target: Position) -> Result<(), String> {
-        // In internal mode, commands are handled directly by updating
-        // the drone's target_position field via the API handlers.
-        // No need to send commands to an external system.
-        Ok(())
-    }
-
     fn mode(&self) -> SimulationMode {
         SimulationMode::Internal
     }
@@ -63,6 +57,19 @@ impl SimulationEngine for InternalSimulationEngine {
 
     fn is_connected(&self) -> bool {
         self.initialized
+    }
+}
+
+/// Adapter: no-op command dispatcher for internal simulation mode
+///
+/// In internal mode, drone target_position is already set directly in the domain.
+/// No external system needs to be notified.
+pub struct InternalCommandDispatcher;
+
+#[async_trait]
+impl CommandDispatcher for InternalCommandDispatcher {
+    async fn send_command(&self, _drone_id: &str, _target: Position) -> Result<(), String> {
+        Ok(())
     }
 }
 

@@ -1,7 +1,9 @@
 use crate::drone::{Drone, Position, DroneStatusInfo};
 use crate::formation::{FormationManager, FormationType};
 use crate::mission::{MissionExecutor, MissionType};
+use crate::ports::CommandDispatcher;
 use crate::simulation::{SimulationEngine, SimulationMode, InternalSimulationEngine, GazeboSimulationEngine, SimulationConfig};
+use crate::simulation::{InternalCommandDispatcher, GazeboCommandDispatcher};
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration, Instant};
 
@@ -12,19 +14,28 @@ pub struct DroneSwarm {
     pub simulation_running: bool,
     last_update: Instant,
 
-    // Simulation engine abstraction
+    // Simulation engine (state sync) and command dispatcher (send commands) — two separate ports
     simulation_engine: Box<dyn SimulationEngine>,
     simulation_mode: SimulationMode,
+    dispatcher: Box<dyn CommandDispatcher>,
 }
 
 impl DroneSwarm {
     pub fn new() -> Self {
-        // Default constructor uses internal simulation engine
         let engine = Box::new(InternalSimulationEngine::new());
-        Self::new_with_engine(engine)
+        let dispatcher = Box::new(InternalCommandDispatcher);
+        Self::new_with_engine_and_dispatcher(engine, dispatcher)
     }
 
     pub fn new_with_engine(engine: Box<dyn SimulationEngine>) -> Self {
+        let dispatcher = Box::new(InternalCommandDispatcher);
+        Self::new_with_engine_and_dispatcher(engine, dispatcher)
+    }
+
+    pub fn new_with_engine_and_dispatcher(
+        engine: Box<dyn SimulationEngine>,
+        dispatcher: Box<dyn CommandDispatcher>,
+    ) -> Self {
         let mode = engine.mode();
         Self {
             drones: HashMap::new(),
@@ -34,6 +45,7 @@ impl DroneSwarm {
             last_update: Instant::now(),
             simulation_engine: engine,
             simulation_mode: mode,
+            dispatcher,
         }
     }
 
@@ -56,7 +68,7 @@ impl DroneSwarm {
             // Send commands to simulation engine
             for (drone_id, drone) in &self.drones {
                 if let Some(target) = drone.target_position {
-                    if let Err(e) = self.simulation_engine.send_command(drone_id, target).await {
+                    if let Err(e) = self.dispatcher.send_command(drone_id, target).await {
                         tracing::error!("Failed to send formation command to {}: {}", drone_id, e);
                     }
                 }
@@ -115,7 +127,7 @@ impl DroneSwarm {
             // Send commands to simulation engine for drones with targets
             for (drone_id, drone) in &self.drones {
                 if let Some(target) = drone.target_position {
-                    if let Err(e) = self.simulation_engine.send_command(drone_id, target).await {
+                    if let Err(e) = self.dispatcher.send_command(drone_id, target).await {
                         tracing::error!("Failed to send command to {}: {}", drone_id, e);
                     }
                 }
@@ -184,7 +196,7 @@ impl DroneSwarm {
             // Send commands to simulation engine for drones with targets
             for (drone_id, drone) in &self.drones {
                 if let Some(target) = drone.target_position {
-                    if let Err(e) = self.simulation_engine.send_command(drone_id, target).await {
+                    if let Err(e) = self.dispatcher.send_command(drone_id, target).await {
                         tracing::error!("Failed to send command to {}: {}", drone_id, e);
                     }
                 }
@@ -253,7 +265,7 @@ impl DroneSwarm {
             // Send commands to simulation engine for drones with targets
             for (drone_id, drone) in &self.drones {
                 if let Some(target) = drone.target_position {
-                    if let Err(e) = self.simulation_engine.send_command(drone_id, target).await {
+                    if let Err(e) = self.dispatcher.send_command(drone_id, target).await {
                         tracing::error!("Failed to send command to {}: {}", drone_id, e);
                     }
                 }
@@ -316,23 +328,29 @@ impl DroneSwarm {
         // Shutdown current engine
         self.simulation_engine.shutdown().await?;
 
-        // Create new engine based on mode
-        let mut new_engine: Box<dyn SimulationEngine> = match new_mode {
-            SimulationMode::Internal => {
-                Box::new(InternalSimulationEngine::new())
-            },
-            SimulationMode::Gazebo => {
+        // Create new engine and dispatcher based on mode
+        let (mut new_engine, new_dispatcher): (Box<dyn SimulationEngine>, Box<dyn CommandDispatcher>) = match new_mode {
+            SimulationMode::Internal => (
+                Box::new(InternalSimulationEngine::new()),
+                Box::new(InternalCommandDispatcher),
+            ),
+            SimulationMode::Gazebo => (
                 Box::new(GazeboSimulationEngine::new(
                     config.gazebo.bridge_url.clone(),
                     config.gazebo.timeout_ms,
-                ))
-            },
+                )),
+                Box::new(GazeboCommandDispatcher::new(
+                    config.gazebo.bridge_url.clone(),
+                    config.gazebo.timeout_ms,
+                )),
+            ),
         };
 
         // Initialize new engine
         new_engine.initialize().await?;
 
         self.simulation_engine = new_engine;
+        self.dispatcher = new_dispatcher;
         self.simulation_mode = new_mode;
 
         tracing::info!("Successfully switched to {:?} simulation mode", new_mode);
