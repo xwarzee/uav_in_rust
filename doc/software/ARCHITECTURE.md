@@ -1,6 +1,6 @@
 # UAV Swarm System - Architecture Documentation
 
-**Version:** 0.1.0
+**Version:** 0.4.0
 **Language:** Rust
 **Purpose:** Collaborative UAV (Unmanned Aerial Vehicle) Swarm Controller
 
@@ -10,73 +10,307 @@
 
 1. [System Overview](#system-overview)
 2. [Architecture Principles](#architecture-principles)
-3. [Class Diagram](#class-diagram)
+3. [Hexagonal Architecture](#hexagonal-architecture)
+   - [Vue d'ensemble](#vue-densemble)
+   - [Domaine métier (cœur)](#domaine-métier-cœur)
+   - [Ports (interfaces)](#ports-interfaces)
+   - [Adapters (implémentations)](#adapters-implémentations)
 4. [Module Architecture](#module-architecture)
-5. [Behavioral Diagrams](#behavioral-diagrams)
+5. [Class Diagram](#class-diagram)
+6. [Behavioral Diagrams](#behavioral-diagrams)
    - [Mission Execution Flow](#mission-execution-flow)
    - [Formation Change Flow](#formation-change-flow)
    - [Drone State Machine](#drone-state-machine)
-   - [Simulation Activity](#simulation-activity)
-6. [Design Patterns](#design-patterns)
-7. [Key Components](#key-components)
-8. [Code Navigation](#code-navigation)
+7. [Design Patterns](#design-patterns)
+8. [Key Components](#key-components)
+9. [Code Navigation](#code-navigation)
 
 ---
 
 ## System Overview
 
-The UAV Swarm System is a sophisticated drone coordination platform that enables:
-
-- **Multi-Drone Management**: Coordinate multiple autonomous drones simultaneously
-- **Formation Control**: Three formation types (Triangle, Line, V-Formation) with dynamic reconfiguration
-- **Mission Execution**: Support for MoveTo, Patrol, and Search missions
-- **Real-time Navigation**: Continuous position updates and velocity control
-- **Status Monitoring**: Real-time tracking of all drone states and positions
+The UAV Swarm System is a drone coordination platform exposing a REST API and real-time WebSocket feed. It supports two simulation backends (internal physics engine and Gazebo).
 
 ### Key Capabilities
 
-- Manages multiple drones with independent position and velocity tracking
-- Supports three distinct formation patterns with automatic maintenance
-- Executes complex missions with multiple waypoints
-- Provides async/await-based execution using Tokio runtime
-- CLI interface for easy command and control
-- Basic collision avoidance through formation spacing
+- **REST API** (actix-web): full CRUD for drones, formations, missions, swarm
+- **Real-time WebSocket**: live drone position/status pushed to clients
+- **Formation Control**: Triangle, Line, V-Formation with dynamic reconfiguration
+- **Mission Execution**: MoveTo, Patrol, Search with async tick loop
+- **Dual Simulation Backend**: internal physics engine or Gazebo via HTTP bridge
+- **Hexagonal Architecture**: domain fully decoupled from infrastructure via ports
 
 ---
 
 ## Architecture Principles
 
-### 1. Separation of Concerns
-- **Drone Module**: Core entity with physics and state
-- **Formation Module**: Geometric calculations and formation management
-- **Mission Module**: Waypoint navigation and mission coordination
-- **Swarm Module**: High-level orchestration
+### 1. Ports & Adapters (Hexagonal Architecture)
 
-### 2. Async/Await Model
-- Non-blocking mission execution
-- Concurrent drone operations
-- Efficient resource utilization with Tokio runtime
+The architecture strictly separates three layers:
 
-### 3. Ownership and Borrowing
-- Leverages Rust's ownership system for memory safety
-- No garbage collection overhead
-- Compile-time guarantees of thread safety
+- **Domain** (inner hexagon): business logic, entities, rules — no framework dependency
+- **Ports** (`src/ports/`): traits that define what the domain *needs* from the outside world
+- **Adapters** (`src/api/`, `src/simulation/`): concrete implementations of ports, wired at startup
 
-### 4. State Machine Design
-- Clear drone state transitions
-- Predictable behavior
-- Easy debugging and monitoring
+This allows swapping any adapter (e.g. replace Gazebo with ROS, replace WebSocket with MQTT) without touching the domain.
+
+### 2. Dependency Rule
+
+```
+Adapters → Ports ← Domain
+```
+
+Dependencies always point inward. The domain never imports from `api` or `simulation`.
+
+### 3. Async/Await Model
+
+- Tokio runtime throughout
+- Non-blocking mission ticks (lock acquired, tick executed, lock released, sleep)
+- WebSocket sessions subscribed to a broadcast channel via `EventPublisher`
+
+### 4. Ownership and Borrowing
+
+- `Arc<Mutex<DroneSwarm>>` for shared mutable swarm state across HTTP handlers
+- `Arc<dyn Port>` for injected adapters — cloneable, thread-safe
+- Compile-time thread-safety guarantees
+
+---
+
+## Hexagonal Architecture
+
+### Vue d'ensemble
+
+```plantuml
+@startuml Hexagonal Architecture
+!theme plain
+skinparam linetype ortho
+skinparam nodesep 60
+skinparam ranksep 80
+
+' ─────────────────── DOMAIN (inner hexagon) ───────────────────
+package "Domain (src/drone, swarm, formation, mission)" #LightYellow {
+  [DroneSwarm] as Swarm
+  [FormationManager] as FM
+  [MissionExecutor] as ME
+  [Drone / Position / Velocity] as D
+}
+
+' ─────────────────── PORTS ────────────────────────────────────
+package "Ports (src/ports/)" #LightBlue {
+  interface CommandDispatcher
+  interface EventPublisher
+  interface DroneStateSource
+}
+
+' ─────────────────── PRIMARY ADAPTERS (driving) ───────────────
+package "Primary Adapters — API (src/api/)" #LightGreen {
+  [HTTP Handlers\n(drones, formations,\nmissions, swarm)] as Handlers
+  [AppState\n(Arc<dyn EventPublisher>)] as State
+  [WebSocket Session\n(subscribe)] as WS
+}
+
+' ─────────────────── SECONDARY ADAPTERS (driven) ──────────────
+package "Secondary Adapters — Simulation (src/simulation/)" #LightSalmon {
+  [GazeboCommandDispatcher] as GCD
+  [GazeboDroneStateSource] as GDSS
+  [InternalCommandDispatcher] as ICD
+  [GazeboSimulationEngine /\nInternalSimulationEngine] as Engine
+}
+
+package "Secondary Adapters — WebSocket (src/api/websocket/)" #LightSalmon {
+  [BroadcastEventPublisher] as BEP
+  [NullEventPublisher] as NEP
+}
+
+' ─────────────────── WIRING ───────────────────────────────────
+Handlers --> State
+Handlers --> Swarm : locks Arc<Mutex<DroneSwarm>>
+State --> EventPublisher : Arc<dyn EventPublisher>
+WS --> EventPublisher : subscribe()
+
+Engine --> DroneStateSource : fetch_states()
+Engine --> CommandDispatcher : send_command()
+
+GCD ..|> CommandDispatcher
+GDSS ..|> DroneStateSource
+ICD ..|> CommandDispatcher
+BEP ..|> EventPublisher
+NEP ..|> EventPublisher
+
+Swarm *-- FM
+Swarm *-- ME
+Swarm *-- D
+
+@enduml
+```
+
+### Domaine métier (cœur)
+
+Le cœur du système se trouve dans `src/drone.rs`, `src/swarm.rs`, `src/formation.rs`, `src/mission.rs`. Il ne contient **aucune** référence à actix-web, reqwest, tokio broadcast ou Gazebo. Il s'agit de règles métier pures :
+
+- `DroneSwarm` orchestre la collection de drones, les formations et les missions
+- `FormationManager` calcule les offsets géométriques et vérifie la stabilité
+- `MissionExecutor` gère le cycle de vie des missions et les waypoints
+
+### Ports (interfaces)
+
+Définis dans `src/ports/`, les ports sont des **traits Rust** que l'infrastructure doit implémenter :
+
+| Port | Fichier | Rôle |
+|---|---|---|
+| `CommandDispatcher` | `src/ports/command_dispatcher.rs` | Envoyer une commande de déplacement à un drone |
+| `EventPublisher` | `src/ports/event_publisher.rs` | Publier un `DroneUpdate` vers les clients WebSocket |
+| `DroneStateSource` | `src/ports/drone_state_source.rs` | Récupérer l'état courant des drones depuis un backend |
+
+```rust
+// Exemple : le port EventPublisher
+pub trait EventPublisher: Send + Sync {
+    fn publish(&self, event: DroneUpdate);
+    fn subscribe(&self) -> broadcast::Receiver<DroneUpdate>;
+}
+```
+
+Le domaine ne connaît que les ports — jamais les adapters concrets.
+
+### Adapters (implémentations)
+
+#### Adapters primaires (driving — initialisent l'interaction)
+
+| Adapter | Localisation | Port utilisé |
+|---|---|---|
+| Handlers HTTP (drones, formations, missions, swarm) | `src/api/handlers/` | `EventPublisher` (via `AppState`) |
+| CLI (`main.rs`) | `src/main.rs` | aucun port — crée le swarm directement |
+
+#### Adapters secondaires (driven — appelés par le domaine/engine)
+
+| Adapter | Localisation | Port implémenté |
+|---|---|---|
+| `GazeboCommandDispatcher` | `src/simulation/gazebo_client.rs` | `CommandDispatcher` |
+| `InternalCommandDispatcher` | `src/simulation/internal_engine.rs` | `CommandDispatcher` |
+| `GazeboDroneStateSource` | `src/simulation/gazebo_client.rs` | `DroneStateSource` |
+| `BroadcastEventPublisher` | `src/api/websocket/publisher.rs` | `EventPublisher` |
+| `NullEventPublisher` | `src/api/websocket/publisher.rs` | `EventPublisher` (tests / CLI) |
+
+#### Injection des adapters
+
+L'assemblage se fait au démarrage dans `src/api/state.rs` et `src/api/server.rs` — le domaine ne sait pas quelle implémentation est injectée.
+
+```rust
+// AppState — wiring de l'EventPublisher
+pub struct AppState {
+    pub swarm: Arc<Mutex<DroneSwarm>>,
+    pub event_publisher: Arc<dyn EventPublisher>,  // ← port
+    pub simulation_config: Arc<SimulationConfig>,
+}
+```
+
+---
+
+## Module Architecture
+
+```plantuml
+@startuml UAV Swarm Module Diagram
+!theme plain
+
+package "UAV Swarm System" {
+
+  [main] as Main
+
+  package "Domain" #LightYellow {
+    [drone] as Drone
+    [swarm] as Swarm
+    [formation] as Formation
+    [mission] as Mission
+  }
+
+  package "Ports" #LightBlue {
+    [ports/command_dispatcher] as PCD
+    [ports/event_publisher] as PEP
+    [ports/drone_state_source] as PDSS
+  }
+
+  package "API (Primary Adapters)" #LightGreen {
+    [api/server] as Server
+    [api/state] as State
+    [api/handlers] as Handlers
+    [api/websocket] as WS
+  }
+
+  package "Simulation (Secondary Adapters)" #LightSalmon {
+    [simulation/internal_engine] as Internal
+    [simulation/gazebo_client] as Gazebo
+  }
+
+  package "External" {
+    [actix-web] as Actix
+    [tokio] as Tokio
+    [reqwest] as Reqwest
+    [serde] as Serde
+  }
+}
+
+Main --> Server : run_server()
+Main --> Swarm : DroneSwarm
+
+Server --> State : AppState::new_with_config
+State --> PEP : Arc<dyn EventPublisher>
+State --> Swarm : Arc<Mutex<DroneSwarm>>
+
+Handlers --> State
+Handlers --> PEP : publish()
+WS --> PEP : subscribe()
+
+Internal ..|> PCD : InternalCommandDispatcher
+Gazebo ..|> PCD : GazeboCommandDispatcher
+Gazebo ..|> PDSS : GazeboDroneStateSource
+
+Swarm --> Formation
+Swarm --> Mission
+Swarm --> Drone
+
+Handlers --> Actix
+WS --> Tokio
+Gazebo --> Reqwest
+Drone --> Serde
+
+@enduml
+```
+
+### Module Responsibilities
+
+#### `src/main.rs`
+- CLI argument parsing (clap)
+- Swarm initialization and drone registration
+- Routing to `serve`, `status`, `simulate` commands
+
+#### `src/ports/` — interfaces pures
+- `command_dispatcher.rs` — `CommandDispatcher` trait
+- `event_publisher.rs` — `EventPublisher` trait
+- `drone_state_source.rs` — `DroneStateSource` trait + `DroneState` struct
+
+#### `src/api/` — adapter primaire HTTP/WebSocket
+- `server.rs` — configure et démarre le serveur actix-web
+- `state.rs` — `AppState` partagé entre les handlers (swarm + event_publisher)
+- `handlers/` — un fichier par ressource REST (drones, formations, missions, swarm)
+- `websocket/` — handler WS, session, messages, `BroadcastEventPublisher`
+
+#### `src/simulation/` — adapters secondaires
+- `engine.rs` — trait `SimulationEngine`
+- `internal_engine.rs` — moteur physique interne + `InternalCommandDispatcher`
+- `gazebo_client.rs` — `GazeboSimulationEngine` + `GazeboCommandDispatcher` + `GazeboDroneStateSource`
+
+#### `src/swarm.rs` — domaine, orchestrateur
+- Gère la collection de drones
+- Délègue aux `FormationManager` et `MissionExecutor`
+- Lance la boucle de simulation
+
+#### `src/drone.rs`, `src/formation.rs`, `src/mission.rs` — domaine pur
+- Entités, règles métier, calculs géométriques
+- Aucune dépendance vers les couches externes
 
 ---
 
 ## Class Diagram
-
-This diagram shows all structs, enums, and their relationships in the system.
-
-![Class Diagram](images/UAV%20Swarm%20Class%20Diagram.png)
-
-<details>
-<summary>View PlantUML Source</summary>
 
 ```plantuml
 @startuml UAV Swarm Class Diagram
@@ -84,36 +318,86 @@ This diagram shows all structs, enums, and their relationships in the system.
 skinparam classAttributeIconSize 0
 skinparam linetype ortho
 
-' Core Data Structures
-class Position {
-  +x: f64
-  +y: f64
-  +z: f64
-  --
-  +new(x, y, z): Position
-  +distance_to(&Position): f64
-  +add(&Position): Position
-  +subtract(&Position): Position
-  +normalize(): Position
-  +scale(f64): Position
+' ─── Ports ───
+interface CommandDispatcher {
+  +send_command(drone_id, target): async Result
 }
 
-class Velocity {
-  +vx: f64
-  +vy: f64
-  +vz: f64
-  --
-  +new(vx, vy, vz): Velocity
-  +zero(): Velocity
-  +magnitude(): f64
+interface EventPublisher {
+  +publish(DroneUpdate)
+  +subscribe(): Receiver<DroneUpdate>
 }
 
-enum DroneStatus {
-  Idle
-  Navigating
-  InFormation
-  ExecutingMission
-  Error(String)
+interface DroneStateSource {
+  +fetch_states(): async Result<HashMap<String, DroneState>>
+}
+
+interface SimulationEngine {
+  +initialize(): async Result
+  +update_drones(...): async Result
+  +shutdown(): async Result
+  +mode(): SimulationMode
+  +is_connected(): bool
+}
+
+' ─── Adapters ───
+class BroadcastEventPublisher {
+  -tx: Sender<DroneUpdate>
+  +new(capacity): Self
+}
+
+class NullEventPublisher {
+  +new(): Self
+}
+
+class GazeboCommandDispatcher {
+  -client: Client
+  -bridge_url: String
+  +new(bridge_url, timeout_ms): Self
+}
+
+class InternalCommandDispatcher {}
+
+class GazeboDroneStateSource {
+  -client: Client
+  -bridge_url: String
+  +new(bridge_url, timeout_ms): Self
+}
+
+class GazeboSimulationEngine {
+  -client: Client
+  -bridge_url: String
+  -connected: bool
+  -state_source: Box<dyn DroneStateSource>
+  +new(bridge_url, timeout_ms): Self
+  +new_with_state_source(...): Self
+}
+
+class InternalSimulationEngine {
+  -drones_last_update: HashMap<String, Instant>
+}
+
+' ─── AppState ───
+class AppState {
+  +swarm: Arc<Mutex<DroneSwarm>>
+  +event_publisher: Arc<dyn EventPublisher>
+  +simulation_config: Arc<SimulationConfig>
+  +new(swarm): Self
+  +new_with_config(swarm, config): Self
+}
+
+' ─── Domain ───
+class DroneSwarm {
+  +drones: HashMap<String, Drone>
+  +formation_manager: FormationManager
+  +mission_executor: MissionExecutor
+  +simulation_running: bool
+  --
+  +add_drone(id, position)
+  +set_formation(type): async
+  +update_swarm(): async
+  +tick_mission_by_id(id): Result<bool>
+  +get_swarm_status(): Vec<DroneStatusInfo>
 }
 
 class Drone {
@@ -124,313 +408,60 @@ class Drone {
   +target_position: Option<Position>
   +formation_offset: Option<Position>
   +max_speed: f64
-  +last_update: Instant
   --
-  +new(id, initial_position): Drone
-  +move_to(target: Position)
-  +set_formation_offset(offset: Position)
-  +update_position(dt: f64)
-  +get_status_info(): DroneStatusInfo
-}
-
-class DroneStatusInfo {
-  +id: String
-  +position: Position
-  +velocity: Velocity
-  +status: DroneStatus
-}
-
-' Formation System
-enum FormationType {
-  Triangle
-  Line
-  VFormation
+  +move_to(target)
+  +update_position(dt)
+  +set_formation_offset(offset)
 }
 
 class FormationManager {
-  -formation_type: FormationType
-  -leader_position: Position
+  +formation_type: FormationType
+  +separation_distance: f64
   -formation_offsets: HashMap<String, Position>
-  -separation_distance: f64
   --
-  +new(): FormationManager
   +set_formation_type(FormationType)
-  +set_leader_position(Position)
-  +set_separation_distance(f64)
-  +add_drone(String)
-  +get_target_position(&str): Option<Position>
-  +update_formation(&mut HashMap<String, Drone>)
-  +is_formation_stable(&HashMap<String, Drone>): bool
-  --
-  -calculate_offsets()
-  -calculate_triangle_formation(&[String])
-  -calculate_line_formation(&[String])
-  -calculate_v_formation(&[String])
-}
-
-' Mission System
-enum MissionType {
-  MoveTo(Position)
-  Patrol(Vec<Position>)
-  Search(Position, f64)
-}
-
-enum MissionStatus {
-  NotStarted
-  InProgress
-  Completed
-  Failed(String)
-}
-
-class Mission {
-  +id: String
-  +mission_type: MissionType
-  +status: MissionStatus
-  +assigned_drones: Vec<String>
-  +waypoints: Vec<Position>
-  +current_waypoint: usize
-  --
-  +new(id, mission_type): Mission
-  +assign_drones(Vec<String>)
-  +start()
-  +get_current_target(): Option<Position>
-  +advance_waypoint(): bool
+  +update_formation(drones)
+  +is_formation_stable(drones): bool
 }
 
 class MissionExecutor {
-  -active_missions: HashMap<String, Mission>
-  -mission_counter: u32
+  +active_missions: HashMap<String, Mission>
   --
-  +new(): MissionExecutor
-  +create_mission(MissionType, Vec<String>): String
-  +start_mission(&str): Result<(), String>
-  +execute_mission(&str, &mut HashMap<String, Drone>): Result<(), String>
-  +get_mission_status(&str): Option<&MissionStatus>
-  +list_active_missions(): Vec<String>
-  +cancel_mission(&str): Result<(), String>
+  +create_mission(type, drones): String
+  +start_mission(id): Result
+  +cancel_mission(id): Result
 }
 
-' Swarm Orchestrator
-class DroneSwarm {
-  +drones: HashMap<String, Drone>
-  +formation_manager: FormationManager
-  +mission_executor: MissionExecutor
-  +simulation_running: bool
-  -last_update: Instant
-  --
-  +new(): DroneSwarm
-  +add_drone(&str, Position)
-  +set_formation(&str)
-  +execute_mission(Position): async
-  +execute_patrol_mission(Vec<Position>): async
-  +execute_search_mission(Position, f64): async
-  +get_swarm_status(): Vec<DroneStatusInfo>
-  +update_swarm()
-  +start_simulation(): async
-  +stop_simulation()
-  +demonstrate_capabilities()
+enum DroneUpdate {
+  PositionUpdate
+  StatusChange
+  FormationUpdate
+  MissionProgress
 }
 
-' Relationships
-Drone "1" *-- "1" Position : has
-Drone "1" *-- "1" Velocity : has
-Drone "1" *-- "1" DroneStatus : has
-Drone "1" ..> "1" DroneStatusInfo : creates
+' ─── Relationships ───
+BroadcastEventPublisher ..|> EventPublisher
+NullEventPublisher ..|> EventPublisher
+GazeboCommandDispatcher ..|> CommandDispatcher
+InternalCommandDispatcher ..|> CommandDispatcher
+GazeboDroneStateSource ..|> DroneStateSource
+GazeboSimulationEngine ..|> SimulationEngine
+InternalSimulationEngine ..|> SimulationEngine
 
-FormationManager "1" *-- "1" FormationType : uses
-FormationManager "1" o-- "*" Position : manages offsets
-FormationManager ..> Drone : updates
+GazeboSimulationEngine o-- DroneStateSource : state_source
+GazeboSimulationEngine ..> GazeboDroneStateSource : creates
 
-Mission "1" *-- "1" MissionType : has
-Mission "1" *-- "1" MissionStatus : has
-Mission "1" o-- "*" Position : waypoints
+AppState o-- EventPublisher
+AppState o-- DroneSwarm
 
-MissionExecutor "1" o-- "*" Mission : manages
-MissionExecutor ..> Drone : coordinates
+DroneSwarm *-- FormationManager
+DroneSwarm *-- MissionExecutor
+DroneSwarm o-- Drone
 
-DroneSwarm "1" *-- "1" FormationManager : owns
-DroneSwarm "1" *-- "1" MissionExecutor : owns
-DroneSwarm "1" o-- "*" Drone : manages
+EventPublisher ..> DroneUpdate : publishes
 
 @enduml
 ```
-
-</details>
-
-### Key Relationships
-
-- **Composition** (*--): Strong ownership (e.g., Drone owns its Position)
-- **Aggregation** (o--): Weak association (e.g., DroneSwarm manages Drones)
-- **Dependency** (..>): Uses or creates (e.g., Drone creates DroneStatusInfo)
-
-### Core Structs
-
-#### Position
-3D coordinate system with vector operations essential for spatial calculations:
-- Distance calculations between positions
-- Vector addition/subtraction for relative positioning
-- Normalization for direction vectors
-- Scaling for movement calculations
-
-#### Drone
-Central entity representing each UAV with:
-- Current position and velocity
-- Target position for navigation
-- Formation offset for maintaining formations
-- Status tracking (Idle, Navigating, InFormation, ExecutingMission, Error)
-- Maximum speed constraint (5.0 m/s)
-
-#### FormationManager
-Manages geometric formations:
-- Calculates relative positions for each formation type
-- Updates drone positions to maintain formation
-- Checks formation stability
-- Supports dynamic reconfiguration
-
-#### MissionExecutor
-Orchestrates mission execution:
-- Creates and manages missions
-- Coordinates multiple drones
-- Handles waypoint progression
-- Supports mission cancellation
-
-#### DroneSwarm
-Top-level orchestrator that:
-- Manages the drone collection
-- Owns FormationManager and MissionExecutor
-- Provides unified interface for all operations
-- Runs simulation loop
-
----
-
-## Module Architecture
-
-This diagram shows the module structure and dependencies.
-
-![Module Diagram](images/UAV%20Swarm%20Module%20Diagram.png)
-
-<details>
-<summary>View PlantUML Source</summary>
-
-```plantuml
-@startuml UAV Swarm Module Diagram
-!theme plain
-
-package "UAV Swarm System" {
-
-  [main] as Main
-
-  package "Core Modules" {
-    [drone] as Drone
-    [swarm] as Swarm
-    [formation] as Formation
-    [mission] as Mission
-  }
-
-  package "External Dependencies" {
-    [tokio] as Tokio
-    [clap] as Clap
-    [serde] as Serde
-    [uuid] as UUID
-  }
-}
-
-' Module dependencies
-Main --> Swarm : uses DroneSwarm
-Main --> Drone : uses Position
-Main --> Clap : CLI parsing
-
-Swarm --> Drone : manages Drone
-Swarm --> Formation : uses FormationManager
-Swarm --> Mission : uses MissionExecutor
-Swarm --> Tokio : async runtime
-
-Formation --> Drone : configures Position
-
-Mission --> Drone : coordinates movement
-Mission --> Tokio : async execution
-
-Drone --> Serde : serialization
-Drone --> UUID : identification (potential)
-
-note right of Main
-  Entry point with CLI
-  - Initializes swarm
-  - Handles commands
-  - Manages application flow
-end note
-
-note right of Swarm
-  Central orchestrator
-  - Manages all drones
-  - Coordinates formations
-  - Executes missions
-  - Provides status updates
-end note
-
-note right of Formation
-  Formation management
-  - Triangle formation
-  - Line formation
-  - V-formation
-  - Dynamic reconfiguration
-end note
-
-note right of Mission
-  Mission execution
-  - MoveTo missions
-  - Patrol missions
-  - Search patterns
-  - Waypoint navigation
-end note
-
-note right of Drone
-  Core drone entity
-  - Position & velocity
-  - Status management
-  - Movement logic
-  - Collision avoidance
-end note
-
-@enduml
-```
-
-</details>
-
-### Module Responsibilities
-
-#### main (src/main.rs)
-- CLI argument parsing using `clap`
-- Application initialization
-- Command routing (start, formation, mission)
-- Top-level error handling
-
-#### swarm (src/swarm.rs)
-- Central orchestration hub
-- Owns and manages drone collection
-- Coordinates formations and missions
-- Simulation loop implementation
-- Status reporting
-
-#### drone (src/drone.rs)
-- Core drone entity definition
-- Position and velocity structs
-- Movement physics calculations
-- State management
-- Serialization support (serde)
-
-#### formation (src/formation.rs)
-- Formation type definitions
-- Geometric offset calculations
-- Formation stability checking
-- Dynamic formation updates
-
-#### mission (src/mission.rs)
-- Mission type definitions
-- Waypoint management
-- Mission execution logic
-- Async coordination
-- Mission lifecycle management
 
 ---
 
@@ -438,165 +469,59 @@ end note
 
 ### Mission Execution Flow
 
-This sequence diagram shows how a mission is executed from user command to completion.
-
-![Mission Execution Sequence](images/Mission%20Execution%20Sequence.png)
-
-<details>
-<summary>View PlantUML Source</summary>
-
 ```plantuml
 @startuml Mission Execution Sequence
 !theme plain
 autonumber
 
 actor User
-participant "main" as Main
+participant "HTTP Handler\n(missions.rs)" as Handler
+participant "AppState" as State
 participant "DroneSwarm" as Swarm
-participant "MissionExecutor" as MissionExec
-participant "Mission" as Mission
-participant "Drone" as Drone
+participant "MissionExecutor" as ME
+participant "EventPublisher" as EP
 
-User -> Main: execute mission command\n(target_x, target_y, target_z)
-activate Main
+User -> Handler: POST /api/missions\n{ type: "move_to", target }
+activate Handler
 
-Main -> Main: parse coordinates
-Main -> Swarm: execute_mission(target)
-activate Swarm
+Handler -> State: swarm.lock()
+activate State
+State --> Handler: MutexGuard<DroneSwarm>
 
-Swarm -> Swarm: get all drone_ids
+Handler -> ME: create_mission(MissionType, drone_ids)
+ME --> Handler: mission_id
 
-Swarm -> MissionExec: create_mission(\nMissionType::MoveTo(target),\ndrone_ids)
-activate MissionExec
+Handler -> ME: start_mission(mission_id)
+Handler -> State: drop lock
+deactivate State
 
-MissionExec -> MissionExec: increment mission_counter
-MissionExec -> Mission: new(mission_id, mission_type)
-activate Mission
-Mission -> Mission: initialize waypoints\nfrom mission_type
-Mission --> MissionExec: mission
-deactivate Mission
+Handler -> Handler: tokio::spawn(tick loop)
+Handler --> User: 200 { id, status: "in_progress" }
+deactivate Handler
 
-MissionExec -> MissionExec: store in active_missions
-MissionExec --> Swarm: mission_id
-deactivate MissionExec
+loop tick toutes les 100ms
+  Handler -> State: swarm.lock()
+  activate State
+  State --> Handler: guard
+  Handler -> Swarm: tick_mission_by_id(id)
+  Swarm -> ME: advance waypoint
+  ME --> Swarm: running=true / completed=false
+  Handler -> ME: get current_waypoint
+  Handler -> State: drop lock
+  deactivate State
 
-Swarm -> MissionExec: start_mission(mission_id)
-activate MissionExec
-MissionExec -> Mission: start()
-activate Mission
-Mission -> Mission: set status = InProgress\ncurrent_waypoint = 0
-Mission --> MissionExec:
-deactivate Mission
-MissionExec --> Swarm: Ok()
-deactivate MissionExec
+  Handler -> EP: publish(MissionProgress { mission_id, waypoint })
+  EP --> User: WebSocket push
 
-Swarm -> MissionExec: execute_mission(\nmission_id, drones)
-activate MissionExec
-
-loop For each waypoint
-  MissionExec -> Mission: get_current_target()
-  activate Mission
-  Mission --> MissionExec: current_waypoint_position
-  deactivate Mission
-
-  loop For each assigned drone
-    MissionExec -> Drone: set status = ExecutingMission
-    activate Drone
-    Drone --> MissionExec:
-    deactivate Drone
-
-    MissionExec -> Drone: move_to(target)
-    activate Drone
-    Drone -> Drone: set target_position\nset status = Navigating
-    Drone --> MissionExec:
-    deactivate Drone
-  end
-
-  loop Until all drones arrive
-    MissionExec -> Drone: update_position(dt)
-    activate Drone
-    Drone -> Drone: calculate direction\nupdate position\nupdate velocity
-    Drone --> MissionExec:
-    deactivate Drone
-
-    MissionExec -> Drone: check distance_to(target)
-    activate Drone
-    Drone --> MissionExec: distance
-    deactivate Drone
-
-    alt distance > 1.0
-      MissionExec -> MissionExec: sleep(100ms)
-    else all arrived
-      MissionExec -> MissionExec: break loop
-      MissionExec -> MissionExec: print "waypoint reached"
-    end
-  end
-
-  MissionExec -> Mission: advance_waypoint()
-  activate Mission
-  Mission -> Mission: increment current_waypoint
-  alt more waypoints
-    Mission --> MissionExec: true
-  else last waypoint
-    Mission -> Mission: set status = Completed
-    Mission --> MissionExec: false
-  end
-  deactivate Mission
-
-  alt mission completed
-    loop For each drone
-      MissionExec -> Drone: set status = Idle
-      activate Drone
-      Drone --> MissionExec:
-      deactivate Drone
-    end
-    MissionExec -> MissionExec: break loop
+  alt completed
+    Handler -> Handler: break
   end
 end
-
-MissionExec --> Swarm: Ok()
-deactivate MissionExec
-
-Swarm --> Main:
-deactivate Swarm
-
-Main -> Main: print "Mission completed"
-Main --> User:
-deactivate Main
 
 @enduml
 ```
 
-</details>
-
-#### Key Steps:
-
-1. **Mission Creation**: User provides target coordinates, system creates MoveTo mission
-2. **Drone Assignment**: All available drones assigned to mission
-3. **Mission Start**: Status changes to InProgress, waypoint counter initialized
-4. **Waypoint Navigation**: For each waypoint:
-   - Assign target to all drones
-   - Wait for all drones to arrive (distance < 1.0)
-   - Advance to next waypoint
-5. **Completion**: Mission status set to Completed, drones return to Idle
-
-#### Critical Points:
-
-- **Async Execution**: Uses `tokio::time::sleep` for non-blocking waits
-- **Synchronization**: All drones must reach waypoint before advancing
-- **Delta Time**: Position updates use elapsed time for physics accuracy
-- **Status Tracking**: Clear state transitions (ExecutingMission → Navigating → Idle)
-
----
-
 ### Formation Change Flow
-
-This sequence diagram illustrates how formations are changed and maintained.
-
-![Formation Change Sequence](images/Formation%20Change%20Sequence.png)
-
-<details>
-<summary>View PlantUML Source</summary>
 
 ```plantuml
 @startuml Formation Change Sequence
@@ -604,143 +529,39 @@ This sequence diagram illustrates how formations are changed and maintained.
 autonumber
 
 actor User
-participant "main" as Main
+participant "HTTP Handler\n(formations.rs)" as Handler
 participant "DroneSwarm" as Swarm
-participant "FormationManager" as FormMgr
-participant "Drone" as Drone
+participant "FormationManager" as FM
+participant "EventPublisher" as EP
 
-User -> Main: set formation command\n(e.g., "triangle")
-activate Main
+User -> Handler: POST /api/formations/current\n{ formation_type: "triangle" }
+activate Handler
 
-Main -> Swarm: set_formation(formation_type)
+Handler -> Swarm: swarm.lock()
 activate Swarm
 
-Swarm -> FormMgr: FormationType::from_str(formation_type)
-activate FormMgr
-FormMgr --> Swarm: Some(FormationType::Triangle)
-deactivate FormMgr
+Handler -> FM: FormationType::from_str("triangle")
+FM --> Handler: Some(Triangle)
 
-Swarm -> FormMgr: set_formation_type(formation)
-activate FormMgr
+Handler -> Swarm: set_formation("triangle")
+Swarm -> FM: set_formation_type(Triangle)
+FM -> FM: calculate_offsets()
+FM -> FM: update_formation(drones)
 
-FormMgr -> FormMgr: update formation_type
-FormMgr -> FormMgr: calculate_offsets()
-activate FormMgr
-
-FormMgr -> FormMgr: get all drone_ids\nfrom formation_offsets
-
-alt Triangle Formation
-  FormMgr -> FormMgr: calculate_triangle_formation()
-  FormMgr -> FormMgr: Leader: (0, 0, 0)\nLeft: (-d, -d*0.866, 0)\nRight: (d, -d*0.866, 0)
-else Line Formation
-  FormMgr -> FormMgr: calculate_line_formation()
-  FormMgr -> FormMgr: Spread drones along X axis
-else V Formation
-  FormMgr -> FormMgr: calculate_v_formation()
-  FormMgr -> FormMgr: Leader: (0, 0, 0)\nLeft: (-d, -d, 0)\nRight: (d, -d, 0)
-end
-
-FormMgr -> FormMgr: update formation_offsets\nfor each drone
-deactivate FormMgr
-
-FormMgr --> Swarm:
-deactivate FormMgr
-
-Swarm -> FormMgr: update_formation(drones)
-activate FormMgr
-
-FormMgr -> FormMgr: find leader drone\n(first in collection)
-FormMgr -> FormMgr: set leader_position
-
-loop For each drone
-  FormMgr -> FormMgr: get_target_position(drone_id)
-  FormMgr -> FormMgr: calculate:\nleader_position + offset
-
-  FormMgr -> Drone: check distance_to(target_pos)
-  activate Drone
-  Drone --> FormMgr: distance
-  deactivate Drone
-
-  alt distance > 1.0
-    FormMgr -> Drone: move_to(target_pos)
-    activate Drone
-    Drone -> Drone: set target_position\nset status = Navigating
-    Drone --> FormMgr:
-    deactivate Drone
-  else close enough
-    FormMgr -> Drone: set_formation_offset(offset)
-    activate Drone
-    Drone -> Drone: set formation_offset\nset status = InFormation
-    Drone --> FormMgr:
-    deactivate Drone
-  end
-end
-
-FormMgr --> Swarm:
-deactivate FormMgr
-
-Swarm -> Swarm: print "Formation changed"
-Swarm --> Main:
+Handler -> FM: is_formation_stable(drones) → bool
+Handler -> Swarm: drop lock
 deactivate Swarm
 
-Main -> Main: print "Formation set to: {type}"
-Main --> User:
-deactivate Main
+Handler -> EP: publish(FormationUpdate { formation_stable })
+EP --> User: WebSocket push
 
-note over User, Drone
-  After formation change, the swarm's update loop
-  will continuously call update_formation() to
-  maintain the formation as drones move.
-end note
+Handler --> User: 200 { message: "Formation changed to triangle" }
+deactivate Handler
 
 @enduml
 ```
 
-</details>
-
-#### Formation Types:
-
-**Triangle Formation**:
-```
-    Leader (0, 0, 0)
-       / \
-      /   \
-  Left     Right
-(-d, -d*0.866, 0)  (d, -d*0.866, 0)
-```
-
-**Line Formation**:
-```
-Drone1 ---- Drone2 ---- Drone3
-(-d, 0, 0)  (0, 0, 0)  (d, 0, 0)
-```
-
-**V-Formation**:
-```
-       Leader (0, 0, 0)
-      /   \
-     /     \
-   Left     Right
-(-d,-d,0)  (d,-d,0)
-```
-
-#### Formation Maintenance:
-
-- **Continuous Updates**: Simulation loop calls `update_formation()` repeatedly
-- **Distance Threshold**: Drones navigate if distance > 1.0, else maintain position
-- **Leader Tracking**: First drone in collection serves as formation leader
-- **Relative Positioning**: All positions calculated relative to leader
-
----
-
 ### Drone State Machine
-
-This state diagram shows all possible drone states and transitions.
-
-![Drone State Diagram](images/Drone%20State%20Diagram.png)
-
-<details>
-<summary>View PlantUML Source</summary>
 
 ```plantuml
 @startuml Drone State Diagram
@@ -750,483 +571,149 @@ This state diagram shows all possible drone states and transitions.
 
 state Idle {
   Idle : velocity = 0
-  Idle : target_position = None
-  Idle : waiting for commands
+  Idle : no target
 }
 
 state Navigating {
   Navigating : moving to target_position
   Navigating : velocity > 0
-  Navigating : updating position each frame
 }
 
 state InFormation {
-  InFormation : maintaining formation offset
+  InFormation : maintaining offset
   InFormation : following leader
-  InFormation : may be moving or stationary
 }
 
 state ExecutingMission {
-  ExecutingMission : following mission waypoints
-  ExecutingMission : coordinated with swarm
-  ExecutingMission : progressing through objectives
+  ExecutingMission : following waypoints
+  ExecutingMission : coordinated by MissionExecutor
 }
 
 state Error {
-  Error : error_message stored
-  Error : requires intervention
+  Error : message stored
   Error : drone halted
 }
 
-Idle --> Navigating : move_to(target)\ncalled
-Idle --> InFormation : set_formation_offset()\ncalled
+Idle --> Navigating : move_to()
+Idle --> InFormation : set_formation_offset()
 Idle --> ExecutingMission : mission assigned
 
-Navigating --> Idle : reached target\n(distance < 0.1)
-Navigating --> InFormation : set_formation_offset()\ncalled
-Navigating --> ExecutingMission : mission started
-Navigating --> Error : error occurs
+Navigating --> Idle : distance < 0.1
+Navigating --> InFormation : set_formation_offset()
+Navigating --> Error : error
 
-InFormation --> Navigating : new target or\nout of position\n(distance > 1.0)
+InFormation --> Navigating : distance > 1.0
 InFormation --> ExecutingMission : mission started
-InFormation --> Error : error occurs
+InFormation --> Error : error
 
-ExecutingMission --> Navigating : moving to waypoint
+ExecutingMission --> Navigating : waypoint movement
 ExecutingMission --> Idle : mission completed
 ExecutingMission --> Error : mission failed
 
-Error --> Idle : error resolved
-
-note right of ExecutingMission
-  During mission execution:
-  1. MissionExecutor sets status
-  2. Calls move_to() for waypoints
-  3. Drone enters Navigating state
-  4. Returns to ExecutingMission
-  5. Finally returns to Idle
-end note
-
-note left of InFormation
-  Formation maintenance:
-  - FormationManager calculates
-    target positions
-  - If distance > 1.0: move_to()
-    triggers Navigating
-  - If distance < 1.0: stays
-    InFormation
-end note
+Error --> Idle : resolved
 
 @enduml
 ```
-
-</details>
-
-#### State Descriptions:
-
-**Idle**
-- Initial state after creation
-- Velocity = 0, no target position
-- Waiting for commands
-
-**Navigating**
-- Moving toward target_position
-- Velocity > 0
-- Position updated each frame based on delta time
-- Automatically transitions to Idle when distance < 0.1
-
-**InFormation**
-- Maintaining formation offset from leader
-- May be stationary or moving with formation
-- Transitions to Navigating if out of position (distance > 1.0)
-
-**ExecutingMission**
-- High-level state during mission execution
-- Internally uses Navigating state for movement
-- Coordinates with other drones in swarm
-- Returns to Idle when mission completes
-
-**Error**
-- Error condition requiring intervention
-- Stores error message
-- Drone halted until error resolved
-
-#### Key Transitions:
-
-- **Idle → Navigating**: Direct command to move to position
-- **Navigating → Idle**: Automatic when target reached
-- **InFormation ↔ Navigating**: Formation maintenance cycle
-- **ExecutingMission → Navigating**: Waypoint navigation
-- **Any → Error**: Error handling path
-
----
-
-### Simulation Activity
-
-This activity diagram shows the overall application flow and concurrent activities.
-
-![Simulation Activity Diagram](images/Simulation%20Activity%20Diagram.png)
-
-<details>
-<summary>View PlantUML Source</summary>
-
-```plantuml
-@startuml Simulation Activity Diagram
-!theme plain
-
-start
-
-:User starts application;
-
-:Parse CLI arguments;
-
-:Create DroneSwarm;
-
-:Add 3 drones with\ninitial positions;
-
-if (Command?) then (start)
-  :Start simulation;
-
-  :Set simulation_running = true;
-
-  :Print initial status;
-
-  fork
-    :Simulation Loop;
-    repeat
-      :Calculate delta time (dt);
-
-      fork
-        :Update all drone positions;
-        repeat :For each drone;
-          :Update position based on\nvelocity and dt;
-
-          if (Has target?) then (yes)
-            :Calculate direction;
-            :Update velocity;
-            :Move toward target;
-
-            if (Distance < 0.1?) then (yes)
-              :Reach target;
-              :Set velocity = 0;
-              :Set status = Idle;
-            endif
-          endif
-        repeat while (More drones?)
-      fork again
-        :Check formation stability;
-
-        if (Formation stable?) then (yes)
-          :Maintain formation;
-          :Update formation positions;
-        endif
-      end fork
-
-      :Update last_update timestamp;
-
-      if (iteration % 10 == 0?) then (yes)
-        :Print swarm status;
-      endif
-
-      :Sleep 100ms;
-
-      :Increment iteration;
-
-    repeat while (simulation_running\nAND iteration < 100?)
-
-    :Print "Simulation ended";
-  fork again
-    :Monitor for stop signal;
-  end fork
-
-elseif (Command?) then (formation)
-  :Parse formation type;
-
-  :Set formation type\nin FormationManager;
-
-  :Calculate formation offsets;
-
-  :Update all drones to\nformation positions;
-
-  :Print confirmation;
-
-elseif (Command?) then (mission)
-  :Parse target coordinates;
-
-  :Create target Position;
-
-  :Get all drone IDs;
-
-  :Create MoveTo mission;
-
-  :Assign drones to mission;
-
-  :Start mission;
-
-  fork
-    :Mission Execution Loop;
-    repeat
-      :Get current waypoint;
-
-      fork
-        :Assign target to all drones;
-        repeat :For each drone;
-          :Set status = ExecutingMission;
-          :Set target_position;
-        repeat while (More drones?)
-      fork again
-        :Wait for arrival;
-        repeat
-          :Update drone positions;
-          :Check distances;
-          :Sleep 100ms;
-        repeat while (Any drone\nnot arrived?)
-      end fork
-
-      :Print waypoint reached;
-
-      if (More waypoints?) then (yes)
-        :Advance to next waypoint;
-      else (no)
-        :Mark mission complete;
-        :Set drones to Idle;
-      endif
-
-    repeat while (Mission not complete?)
-  fork again
-    :Monitor mission status;
-  end fork
-
-  :Print mission completed;
-
-else (help or unknown)
-  :Print usage information;
-endif
-
-stop
-
-@enduml
-```
-
-</details>
-
-#### Command Flow:
-
-**Start Command**:
-- Initializes simulation loop
-- Parallel activities: position updates and formation maintenance
-- Prints status every 10 iterations
-- 100ms sleep interval between iterations
-- Terminates after 100 iterations or manual stop
-
-**Formation Command**:
-- Parses formation type (triangle, line, v_formation)
-- Calculates geometric offsets
-- Updates all drone positions
-- Single execution, no loop
-
-**Mission Command**:
-- Parses target coordinates
-- Creates mission with waypoints
-- Parallel activities: drone assignment and arrival monitoring
-- Continues until mission complete
-
-#### Concurrency:
-
-- **Fork/Join**: Multiple parallel activities
-- **Position Updates**: All drones updated concurrently
-- **Formation Maintenance**: Runs alongside position updates
-- **Mission Monitoring**: Separate monitoring thread during execution
 
 ---
 
 ## Design Patterns
 
-### 1. Orchestrator Pattern
-**Implementation**: `DroneSwarm`
+### 1. Ports & Adapters (Hexagonal Architecture)
 
-The DroneSwarm acts as the central orchestrator, coordinating all subsystems:
-- Owns the drone collection
-- Delegates to FormationManager for formations
-- Delegates to MissionExecutor for missions
-- Provides unified interface to main
+**Ports**: `CommandDispatcher`, `EventPublisher`, `DroneStateSource`
 
-**Benefits**:
-- Single point of control
-- Clear responsibility boundaries
-- Easy to test and maintain
+Le domaine définit *ce dont il a besoin* via des traits. L'infrastructure fournit les implémentations. Aucun couplage vers actix-web, reqwest ou tokio broadcast dans le domaine.
+
+**Avantages** :
+- Testabilité : mock de `DroneStateSource` pour tester le moteur Gazebo
+- Extensibilité : nouvel adapter (MQTT, ROS, gRPC) sans toucher le domaine
+- Isolation : changer le serveur HTTP n'affecte pas la physique de simulation
 
 ### 2. Strategy Pattern
-**Implementation**: `FormationType` enum
 
-Different formation algorithms encapsulated as strategies:
-- `Triangle`: Equilateral triangle formation
-- `Line`: Linear formation along X-axis
-- `VFormation`: V-shaped formation
+**Implémentation** : `SimulationEngine` (trait), `FormationType` (enum)
 
-**Benefits**:
-- Easy to add new formations
-- Behavior switchable at runtime
-- Formations decoupled from drones
+- `InternalSimulationEngine` vs `GazeboSimulationEngine` : backends interchangeables
+- `Triangle / Line / VFormation` : algorithmes de formation sélectionnables à l'exécution
 
 ### 3. Command Pattern
-**Implementation**: `MissionType` enum
 
-Mission types as commands with data:
-- `MoveTo(Position)`: Simple point-to-point
-- `Patrol(Vec<Position>)`: Multi-waypoint patrol
-- `Search(Position, f64)`: Circular search pattern
+**Implémentation** : `MissionType` enum
 
-**Benefits**:
-- Missions are first-class objects
-- Can be queued, logged, or undone
-- Separation of mission definition and execution
-
-### 4. State Pattern
-**Implementation**: `DroneStatus` enum
-
-Explicit state machine for drones:
-- `Idle`: Waiting for commands
-- `Navigating`: Moving to target
-- `InFormation`: Maintaining formation
-- `ExecutingMission`: Following mission plan
-- `Error`: Error condition
-
-**Benefits**:
-- Clear state transitions
-- Predictable behavior
-- Easy to debug
-
-### 5. Builder Pattern (Implicit)
-**Implementation**: Mission creation
-
-Missions built incrementally:
 ```rust
-let mut mission = Mission::new(id, mission_type);
-mission.assign_drones(drone_ids);
-mission.start();
+enum MissionType {
+    MoveTo(Position),
+    Patrol(Vec<Position>),
+    Search(Position, f64),
+}
 ```
 
-### 6. Observer Pattern (Implicit)
-**Implementation**: Status monitoring
+Les missions sont des objets de première classe, loggables et annulables.
 
-DroneSwarm observes drone states:
-- `get_swarm_status()`: Query all drone states
-- Continuous monitoring in simulation loop
-- Formation stability checking
+### 4. Observer Pattern
+
+**Implémentation** : `EventPublisher` + `BroadcastEventPublisher`
+
+Les handlers publient des `DroneUpdate` ; les sessions WebSocket s'abonnent via `subscribe()`. Le publisher Tokio broadcast assure la distribution 1-N.
+
+### 5. State Pattern
+
+**Implémentation** : `DroneStatus` enum
+
+Transitions explicites : Idle → Navigating → InFormation → ExecutingMission → Error.
+
+### 6. Orchestrator Pattern
+
+**Implémentation** : `DroneSwarm`
+
+Point d'entrée unique pour la collection de drones. Délègue à `FormationManager` et `MissionExecutor`.
 
 ---
 
 ## Key Components
 
-### Position Struct (src/drone.rs:6-41)
+### `AppState` (`src/api/state.rs`)
+
+Point d'injection des adapters dans la couche HTTP :
 
 ```rust
-pub struct Position {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
+pub struct AppState {
+    pub swarm: Arc<Mutex<DroneSwarm>>,       // domaine partagé
+    pub event_publisher: Arc<dyn EventPublisher>,  // port WebSocket
+    pub simulation_config: Arc<SimulationConfig>,
 }
 ```
 
-**Purpose**: 3D coordinate representation with vector operations
+Tous les handlers HTTP reçoivent `web::Data<AppState>`.
 
-**Key Methods**:
-- `distance_to(&Position)`: Euclidean distance calculation
-- `add/subtract(&Position)`: Vector arithmetic
-- `normalize()`: Unit vector for direction
-- `scale(f64)`: Scalar multiplication
+### `BroadcastEventPublisher` (`src/api/websocket/publisher.rs`)
 
-**Usage**: Foundation for all spatial calculations
+Adapter du port `EventPublisher` basé sur `tokio::sync::broadcast` :
 
-### Drone Struct (src/drone.rs:74-147)
+- `publish()` : envoie à tous les abonnés, ignore les erreurs (pas d'abonné = OK)
+- `subscribe()` : retourne un `Receiver` utilisé par les sessions WebSocket
+- `NullEventPublisher` : no-op pour les tests et le mode CLI
+
+### `GazeboDroneStateSource` (`src/simulation/gazebo_client.rs`)
+
+Adapter du port `DroneStateSource` — récupère les états via le bridge HTTP Gazebo :
 
 ```rust
-pub struct Drone {
-    pub id: String,
-    pub position: Position,
-    pub velocity: Velocity,
-    pub status: DroneStatus,
-    pub target_position: Option<Position>,
-    pub formation_offset: Option<Position>,
-    pub max_speed: f64,
-    pub last_update: Instant,
+async fn fetch_states(&self) -> Result<HashMap<String, DroneState>, String> {
+    // GET {bridge_url}/drones/states → HashMap<id, DroneStateUpdate>
+    // → map vers DroneState (format du port)
 }
 ```
 
-**Purpose**: Core UAV entity with physics and state
+`GazeboSimulationEngine` l'injecte via `new_with_state_source()` pour les tests.
 
-**Key Methods**:
-- `move_to(target)`: Set navigation target
-- `update_position(dt)`: Physics update with delta time
-- `set_formation_offset(offset)`: Enter formation mode
-- `get_status_info()`: Create status snapshot
+### `CommandDispatcher` (`src/ports/command_dispatcher.rs`)
 
-**Physics**:
-- Maximum speed: 5.0 m/s
-- Arrival threshold: 0.1 distance units
-- Velocity calculated from direction and speed
-- Position updated each frame: `position += velocity * dt`
+Port d'envoi des commandes de déplacement :
 
-### FormationManager (src/formation.rs:22-147)
-
-**Purpose**: Calculate and maintain formation geometries
-
-**Formation Algorithms**:
-
-**Triangle** (separation distance `d`):
-```
-Leader:    (0, 0, 0)
-Left:      (-d, -d*0.866, 0)  // 0.866 ≈ √3/2 for equilateral triangle
-Right:     (d, -d*0.866, 0)
-```
-
-**Line**:
-```
-For drone i: ((i-1)*d, 0, 0)
-```
-
-**V-Formation**:
-```
-Leader:    (0, 0, 0)
-Left:      (-d, -d, 0)
-Right:     (d, -d, 0)
-```
-
-**Stability**: Formation considered stable if all drones within 2.0 units of target
-
-### MissionExecutor (src/mission.rs:90-229)
-
-**Purpose**: Execute and coordinate missions
-
-**Mission Lifecycle**:
-1. Create: `create_mission(type, drones)` → mission_id
-2. Start: `start_mission(id)` → status = InProgress
-3. Execute: `execute_mission(id, drones)` → async execution
-4. Complete: status = Completed, drones → Idle
-
-**Search Pattern Generation**:
-- 8 waypoints in circular pattern
-- Distributed evenly around center
-- Radius specified by user
-
-### DroneSwarm (src/swarm.rs:7-203)
-
-**Purpose**: Top-level orchestrator
-
-**Main Responsibilities**:
-- Drone lifecycle management
-- Formation coordination
-- Mission delegation
-- Simulation loop
-- Status reporting
-
-**Simulation Loop**:
-1. Calculate delta time
-2. Update all drone positions
-3. Maintain formation if stable
-4. Print status periodically
-5. Sleep 100ms
-6. Repeat until stopped or 100 iterations
+- `GazeboCommandDispatcher` : POST vers le bridge HTTP Gazebo
+- `InternalCommandDispatcher` : mise à jour directe de `drone.target_position`
 
 ---
 
@@ -1236,139 +723,87 @@ Right:     (d, -d, 0)
 
 ```
 src/
-├── main.rs           # Entry point, CLI interface
-├── drone.rs          # Core drone entity and physics
-├── formation.rs      # Formation management
-├── mission.rs        # Mission execution
-└── swarm.rs          # Swarm orchestration
+├── main.rs                    # CLI + wiring initial
+├── drone.rs                   # Entité Drone + Position + Velocity
+├── formation.rs               # FormationManager
+├── mission.rs                 # Mission + MissionExecutor
+├── swarm.rs                   # DroneSwarm (orchestrateur domaine)
+│
+├── ports/
+│   ├── mod.rs
+│   ├── command_dispatcher.rs  # Port CommandDispatcher
+│   ├── event_publisher.rs     # Port EventPublisher
+│   └── drone_state_source.rs  # Port DroneStateSource + DroneState
+│
+├── api/
+│   ├── mod.rs
+│   ├── server.rs              # Démarrage actix-web
+│   ├── state.rs               # AppState (injection adapters)
+│   ├── routes.rs              # Configuration des routes
+│   ├── error.rs               # ApiError
+│   ├── models.rs              # DTOs request/response
+│   ├── handlers/
+│   │   ├── drones.rs          # GET/PUT /api/drones
+│   │   ├── formations.rs      # GET/POST /api/formations
+│   │   ├── missions.rs        # GET/POST /api/missions
+│   │   └── swarm.rs           # GET/POST /api/swarm
+│   └── websocket/
+│       ├── messages.rs        # DroneUpdate enum
+│       ├── session.rs         # Handle WS session (subscribe)
+│       ├── server.rs          # websocket_handler (actix-ws)
+│       └── publisher.rs       # BroadcastEventPublisher + NullEventPublisher
+│
+└── simulation/
+    ├── mod.rs
+    ├── engine.rs              # Trait SimulationEngine
+    ├── mode.rs                # SimulationMode enum
+    ├── config.rs              # SimulationConfig
+    ├── internal_engine.rs     # Moteur physique + InternalCommandDispatcher
+    └── gazebo_client.rs       # GazeboSimulationEngine + GazeboCommandDispatcher
+                               #   + GazeboDroneStateSource
 ```
 
 ### Key Locations
 
-**Initialization**:
-- `src/main.rs:36-41`: Swarm creation and drone initialization
-- `src/drone.rs:86-97`: Drone constructor
+**Ports (interfaces)**:
+- `src/ports/command_dispatcher.rs:1` — `CommandDispatcher` trait
+- `src/ports/event_publisher.rs:1` — `EventPublisher` trait
+- `src/ports/drone_state_source.rs:1` — `DroneStateSource` trait + `DroneState`
 
-**Formation Logic**:
-- `src/formation.rs:58-66`: Formation offset calculation dispatcher
-- `src/formation.rs:68-80`: Triangle formation algorithm
-- `src/formation.rs:82-91`: Line formation algorithm
-- `src/formation.rs:93-105`: V-formation algorithm
-- `src/formation.rs:113-134`: Formation update and maintenance
+**Injection / wiring**:
+- `src/api/state.rs:20` — `AppState::new_with_config` crée `BroadcastEventPublisher`
+- `src/simulation/gazebo_client.rs` — `GazeboSimulationEngine::new` crée `GazeboDroneStateSource`
+- `src/simulation/gazebo_client.rs` — `new_with_state_source()` pour les tests
 
-**Mission Execution**:
-- `src/mission.rs:29-56`: Mission constructor with waypoint generation
-- `src/mission.rs:123-211`: Main mission execution loop
-- `src/swarm.rs:48-72`: Mission delegation from swarm
+**Publish d'événements**:
+- `src/api/handlers/drones.rs:165` — `event_publisher.publish(PositionUpdate)`
+- `src/api/handlers/formations.rs:68` — `event_publisher.publish(FormationUpdate)`
+- `src/api/handlers/missions.rs:97` — `event_publisher.publish(MissionProgress)`
+- `src/api/handlers/swarm.rs:77` — `event_publisher.publish(PositionUpdate)` (boucle sim)
 
-**Physics & Movement**:
-- `src/drone.rs:109-137`: Position update with delta time
-- `src/drone.rs:17-19`: Distance calculation
-- `src/drone.rs:29-36`: Vector normalization
+**Subscribe WebSocket**:
+- `src/api/websocket/session.rs:11` — `state.event_publisher.subscribe()`
 
-**State Management**:
-- `src/drone.rs:65-71`: DroneStatus enum
-- `src/drone.rs:99-102`: Transition to Navigating state
-- `src/drone.rs:104-107`: Transition to InFormation state
-
-**CLI Interface**:
-- `src/main.rs:13-34`: Command definitions
-- `src/main.rs:43-66`: Command handling
-
----
-
-## Viewing These Diagrams
-
-### Online
-Visit [PlantUML Web Server](http://www.plantuml.com/plantuml/uml/) and paste any PlantUML code block
-
-### VS Code
-1. Install "PlantUML" extension
-2. Open this file
-3. Press `Alt+D` to preview diagrams
-
-### Command Line
-```bash
-# Install PlantUML
-brew install plantuml  # macOS
-apt install plantuml   # Ubuntu/Debian
-
-# Generate images from this document
-# (requires extracting code blocks)
-
-# Or use the separate .puml files
-plantuml doc/*.puml          # Generate PNGs
-plantuml -tsvg doc/*.puml    # Generate SVGs
-```
-
-### IntelliJ/PyCharm
-Built-in PlantUML support - diagrams render automatically
-
----
-
-## Future Enhancements
-
-Based on the current architecture, potential areas for expansion:
-
-### 1. Enhanced Collision Avoidance
-- Implement potential field method
-- Add obstacle detection
-- Dynamic path planning
-
-### 2. Communication System
-- Inter-drone messaging
-- Distributed coordination
-- Consensus algorithms
-
-### 3. Advanced Path Planning
-- A* algorithm for optimal routes
-- Obstacle map integration
-- Dynamic obstacle avoidance
-
-### 4. Sensor Integration
-- Camera feeds
-- LIDAR data
-- GPS/IMU fusion
-
-### 5. Multi-Swarm Coordination
-- Swarm-to-swarm communication
-- Hierarchical control
-- Task allocation
-
-### 6. More Formation Types
-- Diamond formation
-- Echelon left/right
-- Box formation
-- Dynamic formation morphing
-
-### 7. Performance Optimizations
-- Spatial partitioning (quadtree/octree)
-- Parallel drone updates
-- GPU acceleration for physics
-
-### 8. Extended Mission Types
-- Area coverage missions
-- Target tracking
-- Cooperative transport
-- Surveillance patterns
+**Physique domaine**:
+- `src/drone.rs:109` — `update_position(dt)` avec delta time
+- `src/formation.rs:58` — dispatch des algorithmes de formation
+- `src/mission.rs:123` — boucle d'exécution des waypoints
 
 ---
 
 ## Conclusion
 
-The UAV Swarm System demonstrates a clean, modular architecture built on solid design patterns. The separation of concerns between drone physics, formation management, and mission execution enables flexible composition and easy extension.
+L'architecture hexagonale garantit que le domaine métier (physique des drones, formations, missions) reste **indépendant** de toute infrastructure. Les trois ports extraits — `CommandDispatcher`, `EventPublisher`, `DroneStateSource` — constituent les seules interfaces entre le cœur et le monde extérieur.
 
-Key strengths:
-- Clear module boundaries
-- Type-safe state management with Rust enums
-- Async/await for non-blocking operations
-- Geometric precision with floating-point calculations
-- Scalable orchestration pattern
-
-The architecture provides a solid foundation for building more sophisticated autonomous swarm behaviors while maintaining code clarity and maintainability.
+**Points forts** :
+- Le domaine est testable sans actix-web, sans Gazebo, sans WebSocket
+- Chaque adapter peut être remplacé indépendamment (mock en test, Gazebo en production)
+- `NullEventPublisher` permet le mode CLI sans broadcast Tokio actif
+- `new_with_state_source()` sur le moteur Gazebo permet d'injecter un mock en test d'intégration
+- La règle de dépendance est strictement respectée : aucun import de `api` ou `simulation` dans le domaine
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2025-12-21
-**Maintainer**: Development Team
+**Document Version**: 2.0
+**Last Updated**: 2026-02-20
+**Architecture**: Ports & Adapters (Hexagonal)
