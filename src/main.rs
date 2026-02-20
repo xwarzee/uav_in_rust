@@ -30,6 +30,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .value_name("FILE")
             .help("Path to simulation configuration file (TOML)")
             .global(true))
+        .arg(Arg::new("drones")
+            .long("drones")
+            .short('n')
+            .value_name("COUNT")
+            .default_value("3")
+            .value_parser(clap::value_parser!(u32).range(1..=100))
+            .help("Number of drones in the swarm (1–100)")
+            .global(true))
         .subcommand(
             Command::new("start")
                 .about("Start the swarm simulation")
@@ -130,10 +138,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create swarm with engine and dispatcher (composition root)
     let mut swarm = DroneSwarm::new_with_engine_and_dispatcher(engine, dispatcher);
 
-    // Initialize 3 drones
-    swarm.add_drone("drone_1", Position::new(0.0, 0.0, 10.0));
-    swarm.add_drone("drone_2", Position::new(5.0, 0.0, 10.0));
-    swarm.add_drone("drone_3", Position::new(-5.0, 0.0, 10.0));
+    // Initialize drones spread along the X axis, centered on origin
+    let drone_count = *matches.get_one::<u32>("drones").unwrap();
+    for i in 0..drone_count {
+        let x = (i as f64 - (drone_count as f64 - 1.0) / 2.0) * 5.0;
+        swarm.add_drone(&format!("drone_{}", i + 1), Position::new(x, 0.0, 10.0));
+    }
 
     println!("Swarm initialized with {} drones", swarm.drones.len());
     println!("Current simulation mode: {}", swarm.get_simulation_mode().as_str());
