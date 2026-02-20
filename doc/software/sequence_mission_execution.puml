@@ -3,117 +3,97 @@
 autonumber
 
 actor User
-participant "main" as Main
+participant "HTTP Handler\nPOST /api/missions\n(src/api/handlers/missions.rs)" as Handler
+participant "AppState\n(Arc<Mutex<DroneSwarm>>)" as State
 participant "DroneSwarm" as Swarm
-participant "MissionExecutor" as MissionExec
+participant "MissionExecutor" as ME
 participant "Mission" as Mission
-participant "Drone" as Drone
+participant "EventPublisher\n(BroadcastEventPublisher)" as EP
+participant "WebSocket Clients" as WS
 
-User -> Main: execute mission command\n(target_x, target_y, target_z)
-activate Main
+User -> Handler: POST /api/missions\n{ "MoveTo": { "target": {...} } }
+activate Handler
 
-Main -> Main: parse coordinates
-Main -> Swarm: execute_mission(target)
-activate Swarm
+Handler -> State: swarm.lock().await
+activate State
+State --> Handler: MutexGuard<DroneSwarm>
 
-Swarm -> Swarm: get all drone_ids
+Handler -> Handler: collect drone_ids
 
-Swarm -> MissionExec: create_mission(\nMissionType::MoveTo(target),\ndrone_ids)
-activate MissionExec
-
-MissionExec -> MissionExec: increment mission_counter
-MissionExec -> Mission: new(mission_id, mission_type)
+Handler -> ME: create_mission(MissionType::MoveTo(target), drone_ids)
+activate ME
+ME -> Mission: new(mission_id, mission_type)
 activate Mission
-Mission -> Mission: initialize waypoints\nfrom mission_type
-Mission --> MissionExec: mission
+Mission -> Mission: initialize waypoints from mission_type
+Mission --> ME: Mission
 deactivate Mission
+ME -> ME: store in active_missions
+ME --> Handler: mission_id
+deactivate ME
 
-MissionExec -> MissionExec: store in active_missions
-MissionExec --> Swarm: mission_id
-deactivate MissionExec
+Handler -> ME: start_mission(mission_id)
+activate ME
+ME -> Mission: start() → status = InProgress, current_waypoint = 0
+ME --> Handler: Ok()
+deactivate ME
 
-Swarm -> MissionExec: start_mission(mission_id)
-activate MissionExec
-MissionExec -> Mission: start()
-activate Mission
-Mission -> Mission: set status = InProgress\ncurrent_waypoint = 0
-Mission --> MissionExec:
-deactivate Mission
-MissionExec --> Swarm: Ok()
-deactivate MissionExec
+Handler -> State: drop MutexGuard (lock released)
+deactivate State
 
-Swarm -> MissionExec: execute_mission(\nmission_id, drones)
-activate MissionExec
+Handler -> Handler: tokio::spawn(tick loop)
+note right: handler responds immediately\nwhile the mission runs\nin the background
 
-loop For each waypoint
-  MissionExec -> Mission: get_current_target()
-  activate Mission
-  Mission --> MissionExec: current_waypoint_position
-  deactivate Mission
+Handler --> User: 200 OK\n{ "id": "...", "status": "in_progress" }
+deactivate Handler
 
-  loop For each assigned drone
-    MissionExec -> Drone: set status = ExecutingMission
-    activate Drone
-    Drone --> MissionExec:
-    deactivate Drone
+group Tick loop (tokio::spawn — every 100ms)
+  loop mission running
+    Handler -> State: swarm.lock().await
+    activate State
+    State --> Handler: MutexGuard<DroneSwarm>
 
-    MissionExec -> Drone: move_to(target)
-    activate Drone
-    Drone -> Drone: set target_position\nset status = Navigating
-    Drone --> MissionExec:
-    deactivate Drone
-  end
+    Handler -> Swarm: tick_mission_by_id(mission_id)
+    activate Swarm
+    Swarm -> ME: tick
+    ME -> Mission: get_current_target()
+    Mission --> ME: waypoint_position
+    ME -> ME: move drones toward waypoint
+    ME -> Mission: advance_waypoint() on arrival
 
-  loop Until all drones arrive
-    MissionExec -> Drone: update_position(dt)
-    activate Drone
-    Drone -> Drone: calculate direction\nupdate position\nupdate velocity
-    Drone --> MissionExec:
-    deactivate Drone
-
-    MissionExec -> Drone: check distance_to(target)
-    activate Drone
-    Drone --> MissionExec: distance
-    deactivate Drone
-
-    alt distance > 1.0
-      MissionExec -> MissionExec: sleep(100ms)
-    else all arrived
-      MissionExec -> MissionExec: break loop
-      MissionExec -> MissionExec: print "waypoint reached"
+    alt Mission still running
+      ME --> Swarm: Ok(true)
+    else Mission completed
+      ME --> Swarm: Ok(false)
     end
-  end
+    Swarm --> Handler: Result<bool, String>
+    deactivate Swarm
 
-  MissionExec -> Mission: advance_waypoint()
-  activate Mission
-  Mission -> Mission: increment current_waypoint
-  alt more waypoints
-    Mission --> MissionExec: true
-  else last waypoint
-    Mission -> Mission: set status = Completed
-    Mission --> MissionExec: false
-  end
-  deactivate Mission
+    Handler -> ME: active_missions.get(id).current_waypoint
+    ME --> Handler: waypoint: usize
 
-  alt mission completed
-    loop For each drone
-      MissionExec -> Drone: set status = Idle
-      activate Drone
-      Drone --> MissionExec:
-      deactivate Drone
+    Handler -> State: drop MutexGuard
+    deactivate State
+
+    Handler -> EP: publish(MissionProgress { mission_id, waypoint })
+    activate EP
+    EP -> WS: broadcast DroneUpdate::MissionProgress
+    EP --> Handler:
+    deactivate EP
+
+    alt Ok(true) — mission continues
+      Handler -> Handler: sleep(100ms)
+    else Ok(false) — mission completed
+      Handler -> Handler: break
+    else Err(e) — mission failed
+      Handler -> Handler: log error, break
     end
-    MissionExec -> MissionExec: break loop
   end
 end
 
-MissionExec --> Swarm: Ok()
-deactivate MissionExec
-
-Swarm --> Main:
-deactivate Swarm
-
-Main -> Main: print "Mission completed"
-Main --> User:
-deactivate Main
+note over EP, WS
+  WebSocket clients receive a
+  MissionProgress event on each tick (100ms)
+  with the current waypoint index.
+end note
 
 @enduml

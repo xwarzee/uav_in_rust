@@ -1,80 +1,115 @@
 @startuml UAV Swarm Module Diagram
 !theme plain
+skinparam nodesep 40
+skinparam ranksep 50
 
 package "UAV Swarm System" {
 
   [main] as Main
 
-  package "Core Modules" {
+  package "Domain" #FFFDE7 {
     [drone] as Drone
     [swarm] as Swarm
     [formation] as Formation
     [mission] as Mission
   }
 
+  package "Ports  src/ports/" #E3F2FD {
+    [command_dispatcher] as PCD
+    [event_publisher] as PEP
+    [drone_state_source] as PDSS
+  }
+
+  package "API  src/api/  (primary adapters)" #E8F5E9 {
+    [api/server] as Server
+    [api/state\nAppState] as State
+    [api/handlers\ndrones · formations\nmissions · swarm] as Handlers
+    [api/websocket\nsession · server] as WS
+    [api/websocket/publisher\nBroadcastEventPublisher\nNullEventPublisher] as Publisher
+  }
+
+  package "Simulation  src/simulation/  (secondary adapters)" #FFEBEE {
+    [simulation/engine\nSimulationEngine trait] as Engine
+    [simulation/internal_engine\nInternalSimulationEngine\nInternalCommandDispatcher] as Internal
+    [simulation/gazebo_client\nGazeboSimulationEngine\nGazeboCommandDispatcher\nGazeboDroneStateSource] as Gazebo
+  }
+
   package "External Dependencies" {
+    [actix-web] as Actix
     [tokio] as Tokio
+    [reqwest] as Reqwest
+    [serde / serde_json] as Serde
     [clap] as Clap
-    [serde] as Serde
-    [uuid] as UUID
+    [async-trait] as AsyncTrait
   }
 }
 
-' Module dependencies
-Main --> Swarm : uses DroneSwarm
-Main --> Drone : uses Position
+' ── Entry point ──────────────────────────────────────────────
+Main --> Server : run_server()
+Main --> Swarm : DroneSwarm::new()
 Main --> Clap : CLI parsing
 
-Swarm --> Drone : manages Drone
-Swarm --> Formation : uses FormationManager
-Swarm --> Mission : uses MissionExecutor
-Swarm --> Tokio : async runtime
+' ── Server / AppState ────────────────────────────────────────
+Server --> State : AppState::new_with_config()
+Server --> Publisher : BroadcastEventPublisher::new()
+State --> PEP : Arc<dyn EventPublisher>
+State --> Swarm : Arc<Mutex<DroneSwarm>>
 
-Formation --> Drone : configures Position
+' ── Handlers use ports via AppState ──────────────────────────
+Handlers --> State : web::Data<AppState>
+Handlers --> PEP : publish()
+WS --> PEP : subscribe()
+WS --> State
 
-Mission --> Drone : coordinates movement
-Mission --> Tokio : async execution
+' ── Port implementations ─────────────────────────────────────
+Publisher ..|> PEP : BroadcastEventPublisher
+Publisher ..|> PEP : NullEventPublisher
+Gazebo ..|> PCD : GazeboCommandDispatcher
+Gazebo ..|> PDSS : GazeboDroneStateSource
+Internal ..|> PCD : InternalCommandDispatcher
 
-Drone --> Serde : serialization
-Drone --> UUID : identification (potential)
+' ── Simulation engine ─────────────────────────────────────────
+Engine --> PCD : uses CommandDispatcher
+Engine --> PDSS : uses DroneStateSource
+Gazebo --> Engine : implements SimulationEngine
+Internal --> Engine : implements SimulationEngine
+Gazebo --> PDSS : state_source (Box<dyn>)
 
-note right of Main
-  Entry point with CLI
-  - Initializes swarm
-  - Handles commands
-  - Manages application flow
+' ── Domain dependencies ───────────────────────────────────────
+Swarm --> Drone
+Swarm --> Formation
+Swarm --> Mission
+
+' ── External ──────────────────────────────────────────────────
+Handlers --> Actix
+WS --> Actix
+WS --> Tokio
+Gazebo --> Reqwest
+Drone --> Serde
+Internal --> Tokio
+PCD --> AsyncTrait
+PDSS --> AsyncTrait
+Engine --> AsyncTrait
+
+note right of PEP
+  Ports are pure traits.
+  No domain module imports
+  from src/api/ or src/simulation/.
 end note
 
-note right of Swarm
-  Central orchestrator
-  - Manages all drones
-  - Coordinates formations
-  - Executes missions
-  - Provides status updates
+note right of State
+  AppState wires the adapters
+  at startup.
+  Handlers receive
+  Arc<dyn EventPublisher>
+  via AppState.
 end note
 
-note right of Formation
-  Formation management
-  - Triangle formation
-  - Line formation
-  - V-formation
-  - Dynamic reconfiguration
-end note
-
-note right of Mission
-  Mission execution
-  - MoveTo missions
-  - Patrol missions
-  - Search patterns
-  - Waypoint navigation
-end note
-
-note right of Drone
-  Core drone entity
-  - Position & velocity
-  - Status management
-  - Movement logic
-  - Collision avoidance
+note right of Gazebo
+  GazeboSimulationEngine
+  encapsulates GazeboDroneStateSource
+  (injected via new_with_state_source
+  for testing).
 end note
 
 @enduml

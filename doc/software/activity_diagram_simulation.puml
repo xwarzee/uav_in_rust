@@ -3,130 +3,141 @@
 
 start
 
-:User starts application;
+:Parse CLI arguments (clap);
 
-:Parse CLI arguments;
+if (Command?) then (serve)
 
-:Create DroneSwarm;
+  :Initialize DroneSwarm\n(add N drones with initial positions);
 
-:Add 3 drones with\ninitial positions;
+  :Create BroadcastEventPublisher;
 
-if (Command?) then (start)
-  :Start simulation;
+  :Create AppState\n(swarm + event_publisher + config);
 
-  :Set simulation_running = true;
-
-  :Print initial status;
+  :Start actix-web HTTP server\n(host:port);
 
   fork
-    :Simulation Loop;
-    repeat
-      :Calculate delta time (dt);
+    group REST API — HTTP handlers
+      repeat
+        if (Request?) then (GET /api/swarm)
+          :Return swarm status;
 
-      fork
-        :Update all drone positions;
-        repeat :For each drone;
-          :Update position based on\nvelocity and dt;
+        elseif (Request?) then (POST /api/swarm/start)
+          :Set simulation_running = true;
+          :tokio::spawn(simulation loop);
 
-          if (Has target?) then (yes)
-            :Calculate direction;
-            :Update velocity;
-            :Move toward target;
+          fork
+            group Simulation loop (100ms ticks)
+              repeat
+                :swarm.lock();
+                :update_swarm() — update_position(dt)\nfor each drone;
+                :get_swarm_status() → Vec<DroneStatusInfo>;
+                :drop lock;
+                :event_publisher.publish(\n  PositionUpdate for each drone\n);
+                :sleep 100ms;
+              repeat while (simulation_running?)
+            end group
+          end fork
 
-            if (Distance < 0.1?) then (yes)
-              :Reach target;
-              :Set velocity = 0;
-              :Set status = Idle;
-            endif
-          endif
-        repeat while (More drones?)
-      fork again
-        :Check formation stability;
+        elseif (Request?) then (POST /api/formations/current)
+          :Validate formation_type;
+          :swarm.lock();
+          :set_formation(type)\n→ FormationManager.update();
+          :is_formation_stable() → bool;
+          :drop lock;
+          :event_publisher.publish(\n  FormationUpdate { formation_stable }\n);
+          :200 OK;
 
-        if (Formation stable?) then (yes)
-          :Maintain formation;
-          :Update formation positions;
+        elseif (Request?) then (POST /api/missions)
+          :swarm.lock();
+          :create_mission(type, drone_ids);
+          :start_mission(id);
+          :drop lock;
+          :tokio::spawn(tick loop);
+
+          fork
+            group Mission tick loop (100ms ticks)
+              repeat
+                :swarm.lock();
+                :tick_mission_by_id(id) → bool;
+                :get current_waypoint;
+                :drop lock;
+                :event_publisher.publish(\n  MissionProgress { id, waypoint }\n);
+                :sleep 100ms;
+              repeat while (mission running?)
+            end group
+          end fork
+
+          :200 OK { id, status: "in_progress" };
+
+        elseif (Request?) then (PUT /api/drones/{id}/state)
+          note right: Gazebo bridge push
+          :swarm.lock();
+          :drone.position = state_update.position;
+          :drone.velocity = state_update.velocity;
+          :drop lock;
+          :event_publisher.publish(\n  PositionUpdate { drone_id, position, velocity }\n);
+          :200 OK;
+
+        else (other REST endpoints)
+          :Handle drones GET/PUT,\nmissions GET/DELETE, etc.;
         endif
-      end fork
+      repeat while (server running?)
+    end group
 
-      :Update last_update timestamp;
-
-      if (iteration % 10 == 0?) then (yes)
-        :Print swarm status;
-      endif
-
-      :Sleep 100ms;
-
-      :Increment iteration;
-
-    repeat while (simulation_running\nAND iteration < 100?)
-
-    :Print "Simulation ended";
   fork again
-    :Monitor for stop signal;
+    group WebSocket — ws://host/ws
+      repeat
+        :websocket_handler accepts connection;
+        :rx = event_publisher.subscribe();
+        fork
+          repeat
+            :rx.recv() → DroneUpdate;
+            :session.text(serde_json::to_string(update));
+          repeat while (connection open?)
+        fork again
+          repeat
+            :Handle incoming WS messages\n(Ping → Pong, Close → close);
+          repeat while (connection open?)
+        end fork
+      repeat while (server running?)
+    end group
+
+  fork again
+    group Simulation Engine (optional — Gazebo mode)
+      :GazeboSimulationEngine.initialize();
+      :check_connection() → health check;
+      :start_sync();
+      repeat
+        :state_source.fetch_states()\n→ GET {bridge_url}/drones/states;
+        :update drone.position + velocity;
+        :send_command() if target_position changed\n→ POST {bridge_url}/drones/{id}/command;
+        :sleep dt;
+      repeat while (connected?)
+    end group
+
   end fork
 
-elseif (Command?) then (formation)
-  :Parse formation type;
+elseif (Command?) then (simulate)
+  :Initialize DroneSwarm;
 
-  :Set formation type\nin FormationManager;
+  :Select InternalSimulationEngine\nor GazeboSimulationEngine;
 
-  :Calculate formation offsets;
+  :engine.initialize();
 
-  :Update all drones to\nformation positions;
+  repeat
+    :engine.update_drones(drones, dt);
+    :swarm.update_swarm();
+    :print swarm status;
+    :sleep dt;
+  repeat while (running?)
 
-  :Print confirmation;
+  :engine.shutdown();
 
-elseif (Command?) then (mission)
-  :Parse target coordinates;
+elseif (Command?) then (status)
+  :Initialize DroneSwarm;
+  :Print swarm status summary;
 
-  :Create target Position;
-
-  :Get all drone IDs;
-
-  :Create MoveTo mission;
-
-  :Assign drones to mission;
-
-  :Start mission;
-
-  fork
-    :Mission Execution Loop;
-    repeat
-      :Get current waypoint;
-
-      fork
-        :Assign target to all drones;
-        repeat :For each drone;
-          :Set status = ExecutingMission;
-          :Set target_position;
-        repeat while (More drones?)
-      fork again
-        :Wait for arrival;
-        repeat
-          :Update drone positions;
-          :Check distances;
-          :Sleep 100ms;
-        repeat while (Any drone\nnot arrived?)
-      end fork
-
-      :Print waypoint reached;
-
-      if (More waypoints?) then (yes)
-        :Advance to next waypoint;
-      else (no)
-        :Mark mission complete;
-        :Set drones to Idle;
-      endif
-
-    repeat while (Mission not complete?)
-  fork again
-    :Monitor mission status;
-  end fork
-
-  :Print mission completed;
-
-else (help or unknown)
+else (help / unknown)
   :Print usage information;
 endif
 

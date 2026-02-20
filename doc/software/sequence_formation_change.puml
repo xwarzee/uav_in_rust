@@ -3,93 +3,65 @@
 autonumber
 
 actor User
-participant "main" as Main
+participant "HTTP Handler\nPOST /api/formations/current\n(src/api/handlers/formations.rs)" as Handler
+participant "AppState\n(Arc<Mutex<DroneSwarm>>)" as State
 participant "DroneSwarm" as Swarm
 participant "FormationManager" as FormMgr
-participant "Drone" as Drone
+participant "EventPublisher\n(BroadcastEventPublisher)" as EP
+participant "WebSocket Clients" as WS
 
-User -> Main: set formation command\n(e.g., "triangle")
-activate Main
+User -> Handler: POST /api/formations/current\n{ "formation_type": "triangle" }
+activate Handler
 
-Main -> Swarm: set_formation(formation_type)
+Handler -> Handler: FormationType::from_str("triangle")\n→ Ok(Triangle) or Err(ApiError)
+
+Handler -> State: swarm.lock().await
+activate State
+State --> Handler: MutexGuard<DroneSwarm>
+
+Handler -> Swarm: set_formation("triangle")
 activate Swarm
 
-Swarm -> FormMgr: FormationType::from_str(formation_type)
-activate FormMgr
-FormMgr --> Swarm: Some(FormationType::Triangle)
-deactivate FormMgr
-
-Swarm -> FormMgr: set_formation_type(formation)
+Swarm -> FormMgr: set_formation_type(Triangle)
 activate FormMgr
 
 FormMgr -> FormMgr: update formation_type
 FormMgr -> FormMgr: calculate_offsets()
-activate FormMgr
-
-FormMgr -> FormMgr: get all drone_ids\nfrom formation_offsets
 
 alt Triangle Formation
-  FormMgr -> FormMgr: calculate_triangle_formation()
   FormMgr -> FormMgr: Leader: (0, 0, 0)\nLeft: (-d, -d*0.866, 0)\nRight: (d, -d*0.866, 0)
 else Line Formation
-  FormMgr -> FormMgr: calculate_line_formation()
-  FormMgr -> FormMgr: Spread drones along X axis
+  FormMgr -> FormMgr: Spread drones along X axis\n((i-1)*d, 0, 0)
 else V Formation
-  FormMgr -> FormMgr: calculate_v_formation()
   FormMgr -> FormMgr: Leader: (0, 0, 0)\nLeft: (-d, -d, 0)\nRight: (d, -d, 0)
 end
 
-FormMgr -> FormMgr: update formation_offsets\nfor each drone
+FormMgr -> FormMgr: update_formation(drones)
+FormMgr -> FormMgr: move_to() or set_formation_offset()\nfor each drone
+
 deactivate FormMgr
-
-FormMgr --> Swarm:
-deactivate FormMgr
-
-Swarm -> FormMgr: update_formation(drones)
-activate FormMgr
-
-FormMgr -> FormMgr: find leader drone\n(first in collection)
-FormMgr -> FormMgr: set leader_position
-
-loop For each drone
-  FormMgr -> FormMgr: get_target_position(drone_id)
-  FormMgr -> FormMgr: calculate:\nleader_position + offset
-
-  FormMgr -> Drone: check distance_to(target_pos)
-  activate Drone
-  Drone --> FormMgr: distance
-  deactivate Drone
-
-  alt distance > 1.0
-    FormMgr -> Drone: move_to(target_pos)
-    activate Drone
-    Drone -> Drone: set target_position\nset status = Navigating
-    Drone --> FormMgr:
-    deactivate Drone
-  else close enough
-    FormMgr -> Drone: set_formation_offset(offset)
-    activate Drone
-    Drone -> Drone: set formation_offset\nset status = InFormation
-    Drone --> FormMgr:
-    deactivate Drone
-  end
-end
-
-FormMgr --> Swarm:
-deactivate FormMgr
-
-Swarm -> Swarm: print "Formation changed"
-Swarm --> Main:
 deactivate Swarm
 
-Main -> Main: print "Formation set to: {type}"
-Main --> User:
-deactivate Main
+Handler -> FormMgr: is_formation_stable(drones) → bool
+note right: checked while lock is held
 
-note over User, Drone
-  After formation change, the swarm's update loop
-  will continuously call update_formation() to
-  maintain the formation as drones move.
+Handler -> State: drop MutexGuard (lock released)
+deactivate State
+
+Handler -> EP: publish(FormationUpdate { formation_stable })
+activate EP
+EP -> WS: broadcast DroneUpdate::FormationUpdate
+EP --> Handler:
+deactivate EP
+
+Handler --> User: 200 OK\n{ "message": "Formation changed to triangle" }
+deactivate Handler
+
+note over EP, WS
+  All subscribed WebSocket clients
+  (state.event_publisher.subscribe())
+  receive the FormationUpdate
+  immediately after the change.
 end note
 
 @enduml

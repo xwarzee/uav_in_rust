@@ -12,7 +12,7 @@ state Idle {
 state Navigating {
   Navigating : moving to target_position
   Navigating : velocity > 0
-  Navigating : updating position each frame
+  Navigating : position updated each tick (dt)
 }
 
 state InFormation {
@@ -23,7 +23,7 @@ state InFormation {
 
 state ExecutingMission {
   ExecutingMission : following mission waypoints
-  ExecutingMission : coordinated with swarm
+  ExecutingMission : coordinated by MissionExecutor
   ExecutingMission : progressing through objectives
 }
 
@@ -42,7 +42,7 @@ Navigating --> InFormation : set_formation_offset()\ncalled
 Navigating --> ExecutingMission : mission started
 Navigating --> Error : error occurs
 
-InFormation --> Navigating : new target or\nout of position\n(distance > 1.0)
+InFormation --> Navigating : out of position\n(distance > 1.0)
 InFormation --> ExecutingMission : mission started
 InFormation --> Error : error occurs
 
@@ -53,22 +53,34 @@ ExecutingMission --> Error : mission failed
 Error --> Idle : error resolved
 
 note right of ExecutingMission
-  During mission execution:
-  1. MissionExecutor sets status
-  2. Calls move_to() for waypoints
+  Tick loop (100ms) in tokio::spawn:
+  1. MissionExecutor.tick_mission_by_id()
+  2. Drone.move_to(waypoint_target)
   3. Drone enters Navigating state
-  4. Returns to ExecutingMission
-  5. Finally returns to Idle
+  4. On arrival: advance_waypoint()
+  5. Returns to Idle when mission ends
+  ──
+  WebSocket: MissionProgress published
+  by EventPublisher on each tick.
 end note
 
 note left of InFormation
-  Formation maintenance:
-  - FormationManager calculates
-    target positions
+  FormationManager.update_formation():
   - If distance > 1.0: move_to()
-    triggers Navigating
-  - If distance < 1.0: stays
-    InFormation
+    → Drone switches to Navigating
+  - If distance ≤ 1.0: set_formation_offset()
+    → Drone stays InFormation
+  ──
+  WebSocket: FormationUpdate published
+  by EventPublisher on formation change.
+end note
+
+note left of Idle
+  Drone published via EventPublisher
+  (PositionUpdate) during simulation loop
+  updates (/api/swarm/start)
+  or on Gazebo push
+  (PUT /api/drones/{id}/state).
 end note
 
 @enduml

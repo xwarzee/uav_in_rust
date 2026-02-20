@@ -1,0 +1,114 @@
+@startuml Hexagonal Architecture
+!theme plain
+skinparam linetype ortho
+skinparam nodesep 50
+skinparam ranksep 60
+skinparam packageStyle rectangle
+
+' ─────────────────── DOMAIN ───────────────────────────────────
+package "Domain\nsrc/drone  src/swarm  src/formation  src/mission" #FFFDE7 {
+  class DroneSwarm
+  class FormationManager
+  class MissionExecutor
+  class Drone
+  class Position
+  class Velocity
+}
+
+' ─────────────────── PORTS ────────────────────────────────────
+package "Ports  src/ports/" #E3F2FD {
+  interface CommandDispatcher {
+    +send_command(drone_id, target): async Result
+  }
+  interface EventPublisher {
+    +publish(DroneUpdate)
+    +subscribe(): Receiver<DroneUpdate>
+  }
+  interface DroneStateSource {
+    +fetch_states(): async Result<HashMap<String, DroneState>>
+  }
+  interface SimulationEngine {
+    +initialize(): async Result
+    +update_drones(...): async Result
+    +shutdown(): async Result
+    +mode(): SimulationMode
+  }
+}
+
+' ─────────────────── PRIMARY ADAPTERS ─────────────────────────
+package "Primary Adapters — API  src/api/" #E8F5E9 {
+  class AppState {
+    +swarm: Arc<Mutex<DroneSwarm>>
+    +event_publisher: Arc<dyn EventPublisher>
+    +simulation_config: Arc<SimulationConfig>
+  }
+  class "HTTP Handlers\ndrones / formations\nmissions / swarm" as Handlers
+  class "WebSocket Session\nactix-ws" as WS
+}
+
+package "Primary Adapter — CLI  src/main.rs" #E8F5E9 {
+  class "main()\nclap CLI" as Main
+}
+
+' ─────────────────── SECONDARY ADAPTERS ───────────────────────
+package "Secondary Adapters — Simulation  src/simulation/" #FFEBEE {
+  class GazeboSimulationEngine {
+    -state_source: Box<dyn DroneStateSource>
+    +new(bridge_url, timeout_ms)
+    +new_with_state_source(...)
+  }
+  class InternalSimulationEngine
+  class GazeboCommandDispatcher
+  class InternalCommandDispatcher
+  class GazeboDroneStateSource
+}
+
+package "Secondary Adapters — WebSocket  src/api/websocket/" #FFEBEE {
+  class BroadcastEventPublisher {
+    -tx: Sender<DroneUpdate>
+    +new(capacity)
+  }
+  class NullEventPublisher
+}
+
+' ─────────────────── RELATIONS ────────────────────────────────
+
+' Adapters implement ports
+GazeboCommandDispatcher ..|> CommandDispatcher
+InternalCommandDispatcher ..|> CommandDispatcher
+GazeboDroneStateSource ..|> DroneStateSource
+GazeboSimulationEngine ..|> SimulationEngine
+InternalSimulationEngine ..|> SimulationEngine
+BroadcastEventPublisher ..|> EventPublisher
+NullEventPublisher ..|> EventPublisher
+
+' Primary adapters use ports
+AppState o--> EventPublisher : Arc<dyn>
+WS ..> EventPublisher : subscribe()
+Handlers ..> EventPublisher : publish()
+Handlers ..> AppState
+
+' Domain is independent
+DroneSwarm *-- FormationManager
+DroneSwarm *-- MissionExecutor
+DroneSwarm o-- Drone
+Drone *-- Position
+Drone *-- Velocity
+
+' Engine uses ports
+GazeboSimulationEngine o--> DroneStateSource : state_source
+GazeboSimulationEngine ..> CommandDispatcher : send_command()
+
+' Main wires everything
+Main --> AppState : creates
+Main --> GazeboSimulationEngine : creates (if Gazebo mode)
+Main --> InternalSimulationEngine : creates (if internal mode)
+
+note bottom of CommandDispatcher
+  The dependency rule is strict:
+  arrows always point inward (toward domain).
+  The domain never imports anything
+  from src/api/ or src/simulation/.
+end note
+
+@enduml

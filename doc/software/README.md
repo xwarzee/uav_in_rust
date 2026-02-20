@@ -16,9 +16,9 @@ The UAV Swarm System follows a **Ports & Adapters (Hexagonal) Architecture**. Th
 
 → **[ARCHITECTURE.md](ARCHITECTURE.md)** — full architecture documentation including:
 
-- Hexagonal architecture overview (diagram + explanation of layers)
+- Hexagonal architecture overview (diagram + layer explanation)
 - Ports and adapters description
-- Module diagram (updated to include `ports/`, `api/`, `simulation/`)
+- Module diagram (includes `ports/`, `api/`, `simulation/`)
 - Class diagram (ports, adapters, domain)
 - Behavioral diagrams (mission execution, formation change, drone state machine)
 - Design patterns (Ports & Adapters, Strategy, Observer, Command, State)
@@ -61,15 +61,27 @@ The UAV Swarm System follows a **Ports & Adapters (Hexagonal) Architecture**. Th
 3. **`NullEventPublisher`**: no-op adapter for CLI mode and unit tests (no Tokio broadcast needed)
 4. **`new_with_state_source()`**: `GazeboSimulationEngine` accepts an injected `DroneStateSource` for integration testing with a mock
 
+## PlantUML Files
+
+| File | Content |
+|---|---|
+| `hexagonal_architecture.puml` | Full hexagonal diagram — domain, ports, all adapters |
+| `class_diagram.puml` | Class diagram — ports, adapters, domain entities |
+| `module_diagram.puml` | Module dependency diagram |
+| `sequence_formation_change.puml` | Formation change sequence (REST + EventPublisher) |
+| `sequence_mission_execution.puml` | Mission execution sequence (async tick loop + EventPublisher) |
+| `state_diagram.puml` | Drone state machine |
+| `activity_diagram_simulation.puml` | Application activity flow (serve / simulate / status) |
+
 ## Code Navigation
 
 ```
 src/
-├── ports/                     ← interfaces (traits)
+├── ports/                      ← interfaces (traits)
 │   ├── command_dispatcher.rs
 │   ├── event_publisher.rs
 │   └── drone_state_source.rs
-├── api/websocket/publisher.rs ← EventPublisher adapters
+├── api/websocket/publisher.rs  ← EventPublisher adapters
 ├── simulation/gazebo_client.rs ← CommandDispatcher + DroneStateSource adapters
-└── api/state.rs               ← wiring: AppState injects Arc<dyn EventPublisher>
+└── api/state.rs                ← wiring: AppState injects Arc<dyn EventPublisher>
 ```
