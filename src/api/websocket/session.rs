@@ -8,7 +8,7 @@ pub async fn handle_websocket_session(
     state: AppState,
 ) {
     // Subscribe to broadcast channel
-    let mut rx = state.broadcast_tx.subscribe();
+    let mut rx = state.event_publisher.subscribe();
 
     // Spawn a task to forward updates from broadcast to WebSocket
     let mut session_clone = session.clone();

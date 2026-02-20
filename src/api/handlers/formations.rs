@@ -3,6 +3,7 @@ use crate::api::models::{
     FormationListResponse, FormationResponse, SetFormationRequest, UpdateSeparationRequest,
 };
 use crate::api::state::AppState;
+use crate::api::websocket::messages::DroneUpdate;
 use crate::formation::FormationType;
 use actix_web::{web, HttpResponse};
 
@@ -65,16 +66,21 @@ pub async fn set_formation(
     state: web::Data<AppState>,
     req: web::Json<SetFormationRequest>,
 ) -> Result<HttpResponse, ApiError> {
-    let mut swarm = state.swarm.lock().await;
+    let formation_stable = {
+        let mut swarm = state.swarm.lock().await;
 
-    let _formation_type = FormationType::from_str(&req.formation_type).ok_or_else(|| {
-        ApiError::InvalidFormation(format!(
-            "Invalid formation type: {}. Available: triangle, line, v_formation",
-            req.formation_type
-        ))
-    })?;
+        let _formation_type = FormationType::from_str(&req.formation_type).ok_or_else(|| {
+            ApiError::InvalidFormation(format!(
+                "Invalid formation type: {}. Available: triangle, line, v_formation",
+                req.formation_type
+            ))
+        })?;
 
-    swarm.set_formation(&req.formation_type).await;
+        swarm.set_formation(&req.formation_type).await;
+        swarm.formation_manager.is_formation_stable(&swarm.drones)
+    };
+
+    state.event_publisher.publish(DroneUpdate::FormationUpdate { formation_stable });
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": format!("Formation changed to {}", req.formation_type)

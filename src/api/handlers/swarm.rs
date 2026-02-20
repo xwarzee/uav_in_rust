@@ -51,7 +51,7 @@ pub async fn start_simulation(
     }
 
     let swarm_state = state.swarm.clone();
-    let broadcast_tx = state.broadcast_tx.clone();
+    let event_publisher = state.event_publisher.clone();
 
     tokio::spawn(async move {
         loop {
@@ -74,7 +74,7 @@ pub async fn start_simulation(
             // Broadcast updates to WebSocket clients
             for drone_info in updates {
                 use crate::api::websocket::messages::DroneUpdate;
-                let _ = broadcast_tx.send(DroneUpdate::PositionUpdate {
+                event_publisher.publish(DroneUpdate::PositionUpdate {
                     drone_id: drone_info.id.clone(),
                     position: drone_info.position,
                     velocity: drone_info.velocity,

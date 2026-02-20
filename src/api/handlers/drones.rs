@@ -161,8 +161,7 @@ pub async fn update_drone_state(
         velocity: drone.velocity,
     };
 
-    // Ignore broadcast errors (no subscribers is OK)
-    let _ = app_state.broadcast_tx.send(update);
+    app_state.event_publisher.publish(update);
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": format!("State updated for drone {}", drone_id)

@@ -11,3 +11,4 @@ pub use internal_engine::InternalSimulationEngine;
 pub use internal_engine::InternalCommandDispatcher;
 pub use gazebo_client::GazeboSimulationEngine;
 pub use gazebo_client::GazeboCommandDispatcher;
+pub use gazebo_client::GazeboDroneStateSource;

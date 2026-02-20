@@ -1,13 +1,47 @@
 use super::engine::SimulationEngine;
 use super::mode::SimulationMode;
 use crate::drone::{Drone, Position, Velocity};
-use crate::ports::CommandDispatcher;
+use crate::ports::{CommandDispatcher, DroneState, DroneStateSource};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::time::Duration;
+
+/// Fetches drone states from the Gazebo HTTP bridge
+pub struct GazeboDroneStateSource {
+    client: Client,
+    bridge_url: String,
+}
+
+impl GazeboDroneStateSource {
+    pub fn new(bridge_url: String, timeout_ms: u64) -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_millis(timeout_ms))
+            .build()
+            .unwrap_or_default();
+        Self { client, bridge_url }
+    }
+}
+
+#[async_trait]
+impl DroneStateSource for GazeboDroneStateSource {
+    async fn fetch_states(&self) -> Result<HashMap<String, DroneState>, String> {
+        let url = format!("{}/drones/states", self.bridge_url);
+        let raw: HashMap<String, DroneStateUpdate> = self.client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch drone states: {}", e))?
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse drone states: {}", e))?;
+        Ok(raw.into_iter()
+            .map(|(id, s)| (id, DroneState { position: s.position, velocity: s.velocity }))
+            .collect())
+    }
+}
 
 /// Gazebo simulation engine using HTTP bridge
 ///
@@ -17,6 +51,7 @@ pub struct GazeboSimulationEngine {
     client: Client,
     bridge_url: String,
     connected: bool,
+    state_source: Box<dyn DroneStateSource>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -55,10 +90,32 @@ impl GazeboSimulationEngine {
             bridge_url
         );
 
+        let state_source = Box::new(GazeboDroneStateSource::new(bridge_url.clone(), timeout_ms));
+
         Self {
             client,
             bridge_url,
             connected: false,
+            state_source,
+        }
+    }
+
+    pub fn new_with_state_source(bridge_url: String, timeout_ms: u64, state_source: Box<dyn DroneStateSource>) -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_millis(timeout_ms))
+            .connect_timeout(Duration::from_secs(10))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .pool_max_idle_per_host(2)
+            .user_agent("uav-swarm-rust/1.0")
+            .tcp_keepalive(Duration::from_secs(60))
+            .build()
+            .unwrap();
+
+        Self {
+            client,
+            bridge_url,
+            connected: false,
+            state_source,
         }
     }
 
@@ -158,24 +215,12 @@ impl SimulationEngine for GazeboSimulationEngine {
             return Err("Bridge not connected".to_string());
         }
 
-        // Fetch latest states from Gazebo via bridge
-        let url = format!("{}/drones/states", self.bridge_url);
+        let states = self.state_source.fetch_states().await?;
 
-        let response: HashMap<String, DroneStateUpdate> = self.client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| format!("Failed to fetch drone states: {}", e))?
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse drone states: {}", e))?;
-
-        // Update internal drone states with Gazebo data
-        for (drone_id, state) in response {
+        for (drone_id, state) in states {
             if let Some(drone) = drones.get_mut(&drone_id) {
                 drone.position = state.position;
                 drone.velocity = state.velocity;
-                // Note: We don't update target_position - that's a command, not state
             }
         }
 

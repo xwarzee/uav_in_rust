@@ -1,6 +1,7 @@
 use crate::api::error::ApiError;
 use crate::api::models::{CreateMissionRequest, MissionListResponse, MissionResponse};
 use crate::api::state::AppState;
+use crate::api::websocket::messages::DroneUpdate;
 use crate::mission::MissionType;
 use actix_web::{web, HttpResponse};
 
@@ -93,19 +94,29 @@ pub async fn create_mission(
 
     // Spawn task to execute mission asynchronously
     let swarm_state = state.swarm.clone();
+    let event_publisher_clone = state.event_publisher.clone();
     let mission_id_clone = mission_id.clone();
     tokio::spawn(async move {
         // Execute mission in ticks, releasing lock between each tick
         loop {
             // Acquire lock, execute one tick, then release lock
-            let result = {
+            let (result, current_waypoint) = {
                 let mut swarm = swarm_state.lock().await;
-                swarm.tick_mission_by_id(&mission_id_clone)
+                let tick_result = swarm.tick_mission_by_id(&mission_id_clone);
+                let waypoint = swarm.mission_executor.active_missions
+                    .get(&mission_id_clone)
+                    .map(|m| m.current_waypoint)
+                    .unwrap_or(0);
+                (tick_result, waypoint)
             };
 
             match result {
                 Ok(true) => {
                     // Mission still running, continue
+                    event_publisher_clone.publish(DroneUpdate::MissionProgress {
+                        mission_id: mission_id_clone.clone(),
+                        waypoint: current_waypoint,
+                    });
                     // Sleep before next tick to allow other tasks to acquire lock
                     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 }

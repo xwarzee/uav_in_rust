@@ -10,3 +10,4 @@ pub mod docs;
 pub use server::run_server;
 pub use state::AppState;
 pub use error::ApiError;
+pub use websocket::BroadcastEventPublisher;
