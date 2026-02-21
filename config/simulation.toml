@@ -21,3 +21,14 @@ auto_start = false
 
 # HTTP request timeout in milliseconds (higher for remote servers)
 timeout_ms = 15000
+
+[ros2]
+# URL of the ROS2 HTTP bridge node
+# For local testing: http://localhost:8082
+bridge_url = "http://localhost:8082"
+
+# Whether ROS2 integration is enabled
+enabled = false
+
+# HTTP request timeout in milliseconds
+timeout_ms = 5000

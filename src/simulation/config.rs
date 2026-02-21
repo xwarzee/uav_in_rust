@@ -9,6 +9,8 @@ pub struct SimulationConfig {
     pub simulation: SimulationSettings,
     #[serde(default)]
     pub gazebo: GazeboConfig,
+    #[serde(default)]
+    pub ros2: Ros2Config,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +31,30 @@ pub struct GazeboConfig {
     pub auto_start: bool,
     #[serde(default = "default_timeout")]
     pub timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ros2Config {
+    #[serde(default = "default_ros2_bridge_url")]
+    pub bridge_url: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_timeout")]
+    pub timeout_ms: u64,
+}
+
+impl Default for Ros2Config {
+    fn default() -> Self {
+        Self {
+            bridge_url: default_ros2_bridge_url(),
+            enabled: false,
+            timeout_ms: default_timeout(),
+        }
+    }
+}
+
+fn default_ros2_bridge_url() -> String {
+    "http://localhost:8082".to_string()
 }
 
 fn default_update_rate() -> f64 {
@@ -68,6 +94,7 @@ impl Default for SimulationConfig {
         Self {
             simulation: SimulationSettings::default(),
             gazebo: GazeboConfig::default(),
+            ros2: Ros2Config::default(),
         }
     }
 }

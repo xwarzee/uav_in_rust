@@ -2,8 +2,8 @@ use crate::drone::{Drone, Position, DroneStatusInfo};
 use crate::formation::{FormationManager, FormationType};
 use crate::mission::{MissionExecutor, MissionType};
 use crate::ports::CommandDispatcher;
-use crate::simulation::{SimulationEngine, SimulationMode, InternalSimulationEngine, GazeboSimulationEngine, SimulationConfig};
-use crate::simulation::{InternalCommandDispatcher, GazeboCommandDispatcher};
+use crate::simulation::{SimulationEngine, SimulationMode, InternalSimulationEngine, GazeboSimulationEngine, Ros2SimulationEngine, SimulationConfig};
+use crate::simulation::{InternalCommandDispatcher, GazeboCommandDispatcher, Ros2CommandDispatcher};
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration, Instant};
 
@@ -342,6 +342,16 @@ impl DroneSwarm {
                 Box::new(GazeboCommandDispatcher::new(
                     config.gazebo.bridge_url.clone(),
                     config.gazebo.timeout_ms,
+                )),
+            ),
+            SimulationMode::Ros2 => (
+                Box::new(Ros2SimulationEngine::new(
+                    config.ros2.bridge_url.clone(),
+                    config.ros2.timeout_ms,
+                )),
+                Box::new(Ros2CommandDispatcher::new(
+                    config.ros2.bridge_url.clone(),
+                    config.ros2.timeout_ms,
                 )),
             ),
         };

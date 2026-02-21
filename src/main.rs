@@ -9,8 +9,8 @@ mod ports;
 use clap::{Arg, Command};
 use swarm::DroneSwarm;
 use drone::Position;
-use simulation::{SimulationConfig, SimulationMode, InternalSimulationEngine, GazeboSimulationEngine};
-use simulation::{InternalCommandDispatcher, GazeboCommandDispatcher};
+use simulation::{SimulationConfig, SimulationMode, InternalSimulationEngine, GazeboSimulationEngine, Ros2SimulationEngine};
+use simulation::{InternalCommandDispatcher, GazeboCommandDispatcher, Ros2CommandDispatcher};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(Arg::new("mode")
             .long("mode")
             .short('m')
-            .value_parser(["internal", "gazebo"])
+            .value_parser(["internal", "gazebo", "ros2"])
             .default_value("internal")
             .help("Simulation mode: internal (Rust physics) or gazebo (external simulation)")
             .global(true))
@@ -118,6 +118,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Box::new(GazeboCommandDispatcher::new(
                         config.gazebo.bridge_url.clone(),
                         config.gazebo.timeout_ms,
+                    )),
+                )
+            }
+            SimulationMode::Ros2 => {
+                println!("Using ROS2 simulation engine");
+                println!("ROS2 bridge URL: {}", config.ros2.bridge_url);
+                (
+                    Box::new(Ros2SimulationEngine::new(
+                        config.ros2.bridge_url.clone(),
+                        config.ros2.timeout_ms,
+                    )),
+                    Box::new(Ros2CommandDispatcher::new(
+                        config.ros2.bridge_url.clone(),
+                        config.ros2.timeout_ms,
                     )),
                 )
             }
