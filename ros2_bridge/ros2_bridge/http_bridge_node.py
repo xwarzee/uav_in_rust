@@ -44,9 +44,11 @@ class _DroneState:
     """Thread-safe snapshot of one drone's state."""
 
     def __init__(self):
+        # Position reported by Gazebo via PosePublisher → ros_gz_bridge (read-only).
         self.position: Dict[str, float] = {'x': 0.0, 'y': 0.0, 'z': 0.0}
-        # Velocity is not directly published by PosePublisher; kept at zero.
-        # A future improvement could derive it from successive pose deltas.
+        # Last position commanded to Gazebo via set_pose.
+        # Used as the starting point for interpolation to avoid round-trip latency.
+        self.commanded_position: Dict[str, float] = {'x': 0.0, 'y': 0.0, 'z': 0.0}
         self.velocity: Dict[str, float] = {'x': 0.0, 'y': 0.0, 'z': 0.0}
         self.pending_target: Optional[Dict[str, float]] = None
 
@@ -72,10 +74,15 @@ class HttpBridgeNode(Node):
         self.declare_parameter('http_port', 8082)
         self.declare_parameter('world_name', 'uav_swarm_world')
         self.declare_parameter('drone_ids', ['drone_1', 'drone_2', 'drone_3'])
+        self.declare_parameter('max_speed', 5.0)   # m/s
+        self.declare_parameter('arrival_threshold', 0.1)  # metres
 
         http_port: int = self.get_parameter('http_port').value
         self._world: str = self.get_parameter('world_name').value
         drone_ids: list = list(self.get_parameter('drone_ids').value)
+        self._max_speed: float = self.get_parameter('max_speed').value
+        self._threshold: float = self.get_parameter('arrival_threshold').value
+        self._dt: float = 0.1  # must match timer period below
 
         # ---- shared state ----
         self._lock = threading.Lock()
@@ -126,32 +133,78 @@ class HttpBridgeNode(Node):
     # ------------------------------------------------------------------
 
     def _on_pose(self, drone_id: str, msg: Pose) -> None:
-        """Update one drone's position from its PosePublisher topic."""
+        """
+        Update one drone's Gazebo-reported position (PosePublisher feedback).
+        On first message, also seed commanded_position so the control loop
+        starts from the correct initial position.
+        """
         with self._lock:
-            if drone_id in self._states:
-                p = msg.position
-                self._states[drone_id].position = {
-                    'x': p.x, 'y': p.y, 'z': p.z,
-                }
+            if drone_id not in self._states:
+                return
+            state = self._states[drone_id]
+            p = msg.position
+            new_pos = {'x': p.x, 'y': p.y, 'z': p.z}
+            state.position = new_pos
+            # Seed commanded_position on first feedback (all zeros → real pose)
+            if (state.commanded_position['x'] == 0.0
+                    and state.commanded_position['y'] == 0.0
+                    and state.commanded_position['z'] == 0.0):
+                state.commanded_position = dict(new_pos)
 
     def _control_loop(self) -> None:
-        """Send pending teleportation commands to Gazebo (10 Hz)."""
+        """
+        Interpolated movement loop — 10 Hz.
+
+        Each tick, each drone with a pending target advances by at most
+        max_speed * dt metres toward it. When within arrival_threshold,
+        the drone snaps to the target and the command is cleared.
+
+        Uses commanded_position (last sent pose) as the starting point to
+        avoid round-trip latency with the Gazebo → PosePublisher feedback.
+        """
         if not self._running:
             return
 
-        with self._lock:
-            pending = {
-                did: state.pending_target
-                for did, state in self._states.items()
-                if state.pending_target is not None
-            }
+        moves: Dict[str, Dict[str, float]] = {}
 
-        for drone_id, target in pending.items():
-            self._teleport(drone_id, target)
-            with self._lock:
-                # Clear only if target hasn't been updated in the meantime
-                if self._states[drone_id].pending_target == target:
-                    self._states[drone_id].pending_target = None
+        with self._lock:
+            for did, state in self._states.items():
+                if state.pending_target is None:
+                    continue
+
+                cur = state.commanded_position
+                tgt = state.pending_target
+
+                dx = tgt['x'] - cur['x']
+                dy = tgt['y'] - cur['y']
+                dz = tgt['z'] - cur['z']
+                dist = (dx ** 2 + dy ** 2 + dz ** 2) ** 0.5
+
+                if dist < self._threshold:
+                    # Arrived: snap and stop
+                    new_pos = dict(tgt)
+                    state.pending_target = None
+                    state.velocity = {'x': 0.0, 'y': 0.0, 'z': 0.0}
+                else:
+                    # Advance one step toward target
+                    step = min(self._max_speed * self._dt, dist)
+                    scale = step / dist
+                    new_pos = {
+                        'x': cur['x'] + dx * scale,
+                        'y': cur['y'] + dy * scale,
+                        'z': cur['z'] + dz * scale,
+                    }
+                    state.velocity = {
+                        'x': (dx / dist) * self._max_speed,
+                        'y': (dy / dist) * self._max_speed,
+                        'z': (dz / dist) * self._max_speed,
+                    }
+
+                state.commanded_position = new_pos
+                moves[did] = new_pos
+
+        for drone_id, new_pos in moves.items():
+            self._teleport(drone_id, new_pos)
 
     def _teleport(self, drone_id: str, target: Dict[str, float]) -> None:
         """

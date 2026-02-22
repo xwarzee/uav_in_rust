@@ -13,3 +13,11 @@ ros2_http_bridge:
       - "drone_1"
       - "drone_2"
       - "drone_3"
+
+    # Maximum drone speed in metres/second.
+    # Each control tick (10 Hz) moves the drone by at most max_speed * 0.1 m.
+    # Increase for faster movement, decrease for smoother slow motion.
+    max_speed: 5.0
+
+    # Distance in metres at which a drone is considered to have arrived at its target.
+    arrival_threshold: 0.1
