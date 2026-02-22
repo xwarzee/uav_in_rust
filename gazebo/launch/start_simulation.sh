@@ -3,8 +3,25 @@
 # Compatible with macOS and Linux
 #
 # Usage:
-#   ./start_simulation.sh          # Launch with GUI (default)
-#   ./start_simulation.sh --headless  # Launch without GUI (for servers)
+#   ./start_simulation.sh              # Gazebo mode — GUI, with C++ RestBridgePlugin
+#   ./start_simulation.sh --headless   # Gazebo mode — headless (no GUI)
+#   ./start_simulation.sh --ros2       # ROS2 mode   — GUI, no RestBridgePlugin
+#   ./start_simulation.sh --ros2 --headless  # ROS2 mode — headless
+#
+# Two simulation modes:
+#
+#   gazebo (default)
+#     Rust app ←HTTP:8092→ RestBridgePlugin (C++) ←ECM→ Gazebo
+#     Started by: this script
+#     Rust CLI:   cargo run -- --mode gazebo serve
+#
+#   ros2
+#     Rust app ←HTTP:8082→ http_bridge_node.py ←ROS2→ ros_gz_bridge ←IGN→ Gazebo
+#     For the full ROS2 stack (Gazebo + bridge + HTTP node), prefer:
+#       ros2 launch ros2_bridge ros2_gazebo_bridge.launch.py [headless:=true]
+#     This script only starts Gazebo with the ROS2-compatible world;
+#     ros_gz_bridge and the Python HTTP node must be started separately.
+#     Rust CLI:   cargo run -- --mode ros2 serve
 
 set -e  # Exit on error
 
@@ -13,9 +30,13 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Parse arguments
 HEADLESS=false
-if [ "$1" = "--headless" ] || [ "$1" = "-s" ]; then
-    HEADLESS=true
-fi
+ROS2_MODE=false
+for arg in "$@"; do
+    case "$arg" in
+        --headless|-s) HEADLESS=true ;;
+        --ros2)        ROS2_MODE=true ;;
+    esac
+done
 
 echo "=========================================="
 echo "UAV Swarm Gazebo Simulation Launcher"
@@ -43,99 +64,118 @@ export IGN_GAZEBO_RESOURCE_PATH="$IGN_GAZEBO_RESOURCE_PATH:$PROJECT_ROOT/gazebo/
 export IGN_GAZEBO_SYSTEM_PLUGIN_PATH="$IGN_GAZEBO_SYSTEM_PLUGIN_PATH:$PROJECT_ROOT/gazebo/plugins/rest_bridge/build/lib"
 
 echo "Environment:"
-echo "  Model path: $PROJECT_ROOT/gazebo/models"
-echo "  Plugin path: $PROJECT_ROOT/gazebo/plugins/rest_bridge/build/lib"
+echo "  Model path:  $PROJECT_ROOT/gazebo/models"
+if [ "$ROS2_MODE" = false ]; then
+    echo "  Plugin path: $PROJECT_ROOT/gazebo/plugins/rest_bridge/build/lib"
+fi
 echo ""
 
-# Check if plugin is built
-PLUGIN_PATH="$PROJECT_ROOT/gazebo/plugins/rest_bridge/build/lib/libRestBridgePlugin.so"
-if [ ! -f "$PLUGIN_PATH" ]; then
-    echo "Warning: RestBridgePlugin not found at:"
-    echo "  $PLUGIN_PATH"
-    echo ""
-    echo "Building plugin..."
+# ---- Gazebo mode: check / build the C++ RestBridgePlugin ----
+if [ "$ROS2_MODE" = false ]; then
+    PLUGIN_PATH="$PROJECT_ROOT/gazebo/plugins/rest_bridge/build/lib/libRestBridgePlugin.so"
+    if [ ! -f "$PLUGIN_PATH" ]; then
+        echo "Warning: RestBridgePlugin not found at:"
+        echo "  $PLUGIN_PATH"
+        echo ""
+        echo "Building plugin..."
 
-    cd "$PROJECT_ROOT/gazebo/plugins/rest_bridge"
+        cd "$PROJECT_ROOT/gazebo/plugins/rest_bridge"
 
-    if [ ! -d "build" ]; then
-        mkdir build
+        if [ ! -d "build" ]; then
+            mkdir build
+        fi
+
+        cd build
+
+        echo "Running CMake..."
+        cmake .. || {
+            echo "Error: CMake failed. Make sure dependencies are installed:"
+            echo "  - ignition-gazebo7-dev (or ignition-fortress)"
+            echo "  - ignition-transport12-dev"
+            echo "  - ignition-math7-dev"
+            echo "  - cmake, g++/clang++"
+            exit 1
+        }
+
+        echo "Compiling plugin..."
+        make || {
+            echo "Error: Compilation failed."
+            exit 1
+        }
+
+        echo "Plugin built successfully!"
+        echo ""
     fi
-
-    cd build
-
-    echo "Running CMake..."
-    cmake .. || {
-        echo "Error: CMake failed. Make sure dependencies are installed:"
-        echo "  - ignition-gazebo7-dev (or ignition-fortress)"
-        echo "  - ignition-transport12-dev"
-        echo "  - ignition-math7-dev"
-        echo "  - cmake, g++/clang++"
-        exit 1
-    }
-
-    echo "Compiling plugin..."
-    make || {
-        echo "Error: Compilation failed."
-        exit 1
-    }
-
-    echo "Plugin built successfully!"
-    echo ""
 fi
 
-# Check if world file exists
-WORLD_FILE="$PROJECT_ROOT/gazebo/worlds/uav_swarm_inline.sdf"
+# ---- Select world file ----
+if [ "$ROS2_MODE" = true ]; then
+    WORLD_FILE="$PROJECT_ROOT/gazebo/worlds/uav_swarm_ros2.sdf"
+else
+    WORLD_FILE="$PROJECT_ROOT/gazebo/worlds/uav_swarm_inline.sdf"
+fi
+
 if [ ! -f "$WORLD_FILE" ]; then
     echo "Error: World file not found at:"
     echo "  $WORLD_FILE"
     exit 1
 fi
 
-# Check if Rust API is running (optional warning)
-if curl -s http://localhost:8080/health > /dev/null 2>&1; then
-    echo "✓ Rust UAV API detected on http://localhost:8080"
+# ---- Status messages ----
+if [ "$ROS2_MODE" = true ]; then
+    echo "Mode: ROS2 (PosePublisher + set_pose service, no C++ plugin)"
+    echo ""
+    echo "NOTE: This script only starts Gazebo."
+    echo "You still need to start ros_gz_bridge and the HTTP bridge node:"
+    echo ""
+    echo "  Option A — all-in-one via ROS2 launch:"
+    echo "    ros2 launch ros2_bridge ros2_gazebo_bridge.launch.py headless:=true"
+    echo ""
+    echo "  Option B — separate terminals:"
+    echo "    ros2 run ros_gz_bridge parameter_bridge \\"
+    echo "      '/world/uav_swarm_world/pose/info@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V' \\"
+    echo "      '/world/uav_swarm_world/set_pose@ros_gz_interfaces/srv/SetEntityPose'"
+    echo ""
+    echo "    ros2 run ros2_bridge http_bridge_node"
+    echo ""
+    echo "Then start the Rust app:"
+    echo "    cargo run -- --mode ros2 serve"
 else
-    echo "⚠ Warning: Rust UAV API not detected on http://localhost:8080"
-    echo "  The plugin will try to connect to the API when sync is enabled."
-    echo "  Start the Rust server with: cargo run -- serve"
+    # Check if Rust API is running (optional warning)
+    if curl -s http://localhost:8080/health > /dev/null 2>&1; then
+        echo "✓ Rust UAV API detected on http://localhost:8080"
+    else
+        echo "⚠ Warning: Rust UAV API not detected on http://localhost:8080"
+        echo "  The plugin will try to connect to the API when sync is enabled."
+        echo "  Start the Rust server with: cargo run -- --mode gazebo serve"
+    fi
+    echo ""
+    echo "Mode: Gazebo (C++ RestBridgePlugin — port 8092)"
+    echo ""
+    echo "Available endpoints:"
+    echo "  GET  http://localhost:8092/health              - Health check"
+    echo "  POST http://localhost:8092/start               - Start sync to Rust"
+    echo "  POST http://localhost:8092/stop                - Stop sync"
+    echo "  GET  http://localhost:8092/drones/states       - Get drone states"
+    echo "  POST http://localhost:8092/drones/{id}/command - Send command"
 fi
 echo ""
 
-# Launch Gazebo
 if [ "$HEADLESS" = true ]; then
     echo "Launching Gazebo in HEADLESS mode (no GUI)..."
-    echo "  Mode: Server only (no visualization)"
 else
     echo "Launching Gazebo with GUI..."
-    echo "  Mode: Full visualization"
+    echo "Tip: use --headless for servers without display"
 fi
 echo "  World: $WORLD_FILE"
 echo ""
-echo "Plugin will listen on http://0.0.0.0:8092"
-echo ""
-echo "Available endpoints:"
-echo "  GET  http://localhost:8092/health       - Health check"
-echo "  POST http://localhost:8092/start        - Start sync to Rust"
-echo "  POST http://localhost:8092/stop         - Stop sync"
-echo "  GET  http://localhost:8092/drones/states - Get drone states"
-echo "  POST http://localhost:8092/drones/{id}/command - Send command"
-echo ""
-
-if [ "$HEADLESS" = false ]; then
-    echo "💡 Tip: For servers without display, use --headless flag"
-    echo "   See GAZEBO_HEADLESS_SOLUTIONS.md for visualization options"
-    echo ""
-fi
-
 echo "Press Ctrl+C to stop simulation"
 echo "=========================================="
 echo ""
 
-# Launch with or without GUI
+# Launch Gazebo
 if [ "$HEADLESS" = true ]; then
-    # Server mode: no GUI, lighter on resources
     ign gazebo -s "$WORLD_FILE" --verbose 4
 else
-    # Full mode: with GUI
     ign gazebo "$WORLD_FILE" --verbose 4
 fi

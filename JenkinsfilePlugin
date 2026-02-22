@@ -15,13 +15,14 @@ pipeline {
                 }
             }
             stages {
-                stage('Deploy Gazebo Plugin') {
+                stage('Deploy Gazebo & ROS2 Plugins') {
                     steps {
                         script {
                             withCredentials([sshUserPrivateKey(credentialsId: 'gazebo_ssh_key', keyFileVariable: 'SSH_KEY')]) {
                             sh """
                                 ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} 'mkdir -p /home/ubuntu/uav_in_rust/'
-                                scp -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r gazebo/ ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER}:/home/ubuntu/uav_in_rust/
+                                scp -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r gazebo/ ros2_bridge/ ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER}:/home/ubuntu/uav_in_rust/
+                                ssh -i "\${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${params.IP_ADDRESS_GAZEBO_SERVER} 'source /opt/ros/humble/setup.bash && colcon build --packages-select ros2_bridge && source install/setup.bash'
                             """
                             }
                         }

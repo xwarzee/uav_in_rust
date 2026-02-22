@@ -1,0 +1,15 @@
+ros2_http_bridge:
+  ros__parameters:
+    # Port on which the HTTP REST server listens.
+    # Must match ros2.bridge_url in config/simulation.toml.
+    http_port: 8082
+
+    # Gazebo world name (must match the <world name="..."> in the SDF file).
+    world_name: "uav_swarm_world"
+
+    # List of drone model names as declared in the SDF world.
+    # Extend this list when adding drones (must also match --drones N in Rust CLI).
+    drone_ids:
+      - "drone_1"
+      - "drone_2"
+      - "drone_3"

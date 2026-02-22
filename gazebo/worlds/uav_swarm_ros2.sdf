@@ -1,0 +1,216 @@
+<?xml version="1.0"?>
+<!--
+  UAV Swarm world for ROS2 integration mode.
+  Differences from uav_swarm_inline.sdf:
+    - RestBridgePlugin removed (replaced by the ros2_bridge Python node)
+    - PosePublisher plugin added: publishes all model poses on
+        /world/uav_swarm_world/pose/info  (ignition.msgs.Pose_V)
+      bridged to ROS2 by ros_gz_bridge as tf2_msgs/TFMessage
+    - Drone models have gravity disabled: positions are controlled by
+        the /world/uav_swarm_world/set_pose service (UserCommands plugin)
+-->
+<sdf version="1.8">
+  <world name="uav_swarm_world">
+
+    <!-- Physics configuration -->
+    <physics name="1ms" type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
+
+    <!-- Required system plugins -->
+    <plugin
+      filename="ignition-gazebo-physics-system"
+      name="ignition::gazebo::systems::Physics">
+    </plugin>
+
+    <!-- UserCommands: exposes /world/{world}/set_pose Ignition Transport service -->
+    <plugin
+      filename="ignition-gazebo-user-commands-system"
+      name="ignition::gazebo::systems::UserCommands">
+    </plugin>
+
+    <plugin
+      filename="ignition-gazebo-scene-broadcaster-system"
+      name="ignition::gazebo::systems::SceneBroadcaster">
+    </plugin>
+
+    <!-- ApplyLinkWrench (kept for consistency with main world) -->
+    <plugin
+      filename="ignition-gazebo-apply-link-wrench-system"
+      name="ignition::gazebo::systems::ApplyLinkWrench">
+    </plugin>
+
+    <!-- Lighting -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Ground plane -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.8 0.8 0.8 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!--
+      Drone models — gravity disabled so that set_pose teleportation
+      is not counteracted by physics between two control ticks.
+    -->
+
+    <!-- Drone 1 -->
+    <model name="drone_1">
+      <pose>0 0 10 0 0 0</pose>
+      <enable_wind>false</enable_wind>
+      <!--
+        PosePublisher must be attached to a model (not world-level).
+        Publishes /model/drone_1/pose (ignition.msgs.Pose) at 10 Hz.
+        Bridged to geometry_msgs/msg/Pose by ros_gz_bridge.
+      -->
+      <plugin
+        filename="ignition-gazebo-pose-publisher-system"
+        name="ignition::gazebo::systems::PosePublisher">
+        <publish_link_pose>false</publish_link_pose>
+        <publish_collision_pose>false</publish_collision_pose>
+        <publish_visual_pose>false</publish_visual_pose>
+        <update_frequency>10.0</update_frequency>
+      </plugin>
+      <link name="base_link">
+        <gravity>false</gravity>
+        <inertial>
+          <mass>1.5</mass>
+          <inertia>
+            <ixx>0.03</ixx>
+            <iyy>0.03</iyy>
+            <izz>0.04</izz>
+          </inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry>
+            <box><size>0.3 0.3 0.15</size></box>
+          </geometry>
+        </collision>
+        <visual name="body_visual">
+          <geometry>
+            <box><size>0.3 0.3 0.15</size></box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Drone 2 -->
+    <model name="drone_2">
+      <pose>5 0 10 0 0 0</pose>
+      <enable_wind>false</enable_wind>
+      <plugin
+        filename="ignition-gazebo-pose-publisher-system"
+        name="ignition::gazebo::systems::PosePublisher">
+        <publish_link_pose>false</publish_link_pose>
+        <publish_collision_pose>false</publish_collision_pose>
+        <publish_visual_pose>false</publish_visual_pose>
+        <update_frequency>10.0</update_frequency>
+      </plugin>
+      <link name="base_link">
+        <gravity>false</gravity>
+        <inertial>
+          <mass>1.5</mass>
+          <inertia>
+            <ixx>0.03</ixx>
+            <iyy>0.03</iyy>
+            <izz>0.04</izz>
+          </inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry>
+            <box><size>0.3 0.3 0.15</size></box>
+          </geometry>
+        </collision>
+        <visual name="body_visual">
+          <geometry>
+            <box><size>0.3 0.3 0.15</size></box>
+          </geometry>
+          <material>
+            <ambient>0 1 0 1</ambient>
+            <diffuse>0 1 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Drone 3 -->
+    <model name="drone_3">
+      <pose>-5 0 10 0 0 0</pose>
+      <enable_wind>false</enable_wind>
+      <plugin
+        filename="ignition-gazebo-pose-publisher-system"
+        name="ignition::gazebo::systems::PosePublisher">
+        <publish_link_pose>false</publish_link_pose>
+        <publish_collision_pose>false</publish_collision_pose>
+        <publish_visual_pose>false</publish_visual_pose>
+        <update_frequency>10.0</update_frequency>
+      </plugin>
+      <link name="base_link">
+        <gravity>false</gravity>
+        <inertial>
+          <mass>1.5</mass>
+          <inertia>
+            <ixx>0.03</ixx>
+            <iyy>0.03</iyy>
+            <izz>0.04</izz>
+          </inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry>
+            <box><size>0.3 0.3 0.15</size></box>
+          </geometry>
+        </collision>
+        <visual name="body_visual">
+          <geometry>
+            <box><size>0.3 0.3 0.15</size></box>
+          </geometry>
+          <material>
+            <ambient>0 0 1 1</ambient>
+            <diffuse>0 0 1 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>
