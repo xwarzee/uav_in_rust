@@ -1,157 +1,171 @@
 <?xml version="1.0"?>
+<!--
+  X3 UAV — visual quadcopter model (X-configuration).
+  No flight physics plugins; position is controlled externally
+  (RestBridgePlugin in Gazebo mode, set_pose service in ROS2 mode).
+
+  Layout (top view, X = forward):
+
+         [prop_fl]         [prop_fr]
+            |    \       /    |
+         motor_fl  \   /  motor_fr
+                  [body]
+         motor_rl  /   \  motor_rr
+            |    /       \    |
+         [prop_rl]         [prop_rr]
+
+  Propeller convention (X-config):
+    CW  (clockwise)    : FR and RL — orange
+    CCW (counter-CW)   : FL and RR — blue-grey
+
+  Key dimensions:
+    Body:         0.18 × 0.18 × 0.05 m
+    Arm length:   0.25 m (diagonal), tip at (±0.177, ±0.177)
+    Prop radius:  0.115 m
+    Total span:   ≈ 0.58 m (tip to tip)
+-->
 <sdf version="1.8">
   <model name="x3_uav">
     <link name="base_link">
-      <!-- Inertial properties for a small quadrotor -->
+
       <inertial>
         <mass>1.5</mass>
         <inertia>
-          <ixx>0.03</ixx>
-          <iyy>0.03</iyy>
-          <izz>0.04</izz>
-          <ixy>0</ixy>
-          <ixz>0</ixz>
-          <iyz>0</iyz>
+          <ixx>0.029</ixx>
+          <iyy>0.029</iyy>
+          <izz>0.052</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
         </inertia>
       </inertial>
 
-      <!-- Main body collision -->
+      <!-- Simplified collision box covering full propeller span -->
       <collision name="collision">
         <geometry>
-          <box>
-            <size>0.3 0.3 0.15</size>
-          </box>
+          <box><size>0.62 0.62 0.10</size></box>
         </geometry>
       </collision>
 
-      <!-- Main body visual -->
-      <visual name="body_visual">
+      <!-- ═══ BODY ═══ -->
+      <visual name="body">
         <geometry>
-          <box>
-            <size>0.3 0.3 0.15</size>
-          </box>
+          <box><size>0.18 0.18 0.05</size></box>
         </geometry>
         <material>
-          <ambient>0.2 0.5 0.8 1</ambient>
-          <diffuse>0.2 0.5 0.8 1</diffuse>
-          <specular>0.5 0.5 0.5 1</specular>
+          <ambient>0.20 0.50 0.80 1</ambient>
+          <diffuse>0.20 0.50 0.80 1</diffuse>
+          <specular>0.4 0.4 0.4 1</specular>
         </material>
       </visual>
 
-      <!-- Rotor arms -->
-      <visual name="arm_front_left">
-        <pose>0.15 0.15 0 0 0 0</pose>
-        <geometry>
-          <cylinder>
-            <radius>0.02</radius>
-            <length>0.05</length>
-          </cylinder>
-        </geometry>
+      <!-- ═══ ARMS (thin diagonal boxes, ±45°) ═══ -->
+      <!--
+        Each arm box (0.25 × 0.016 × 0.016 m) is centered at the midpoint
+        between the body origin and the motor tip, rotated ±45° around Z.
+          FR arm: center ( 0.0885, -0.0885, 0), yaw = -π/4
+          FL arm: center ( 0.0885,  0.0885, 0), yaw = +π/4
+          RR arm: center (-0.0885, -0.0885, 0), yaw = +π/4
+          RL arm: center (-0.0885,  0.0885, 0), yaw = -π/4
+      -->
+      <visual name="arm_fr">
+        <pose>0.0885 -0.0885 0  0 0 -0.7854</pose>
+        <geometry><box><size>0.25 0.016 0.016</size></box></geometry>
         <material>
-          <ambient>0.1 0.1 0.1 1</ambient>
-          <diffuse>0.2 0.2 0.2 1</diffuse>
+          <ambient>0.15 0.15 0.15 1</ambient>
+          <diffuse>0.20 0.20 0.20 1</diffuse>
         </material>
       </visual>
 
-      <visual name="arm_front_right">
-        <pose>0.15 -0.15 0 0 0 0</pose>
-        <geometry>
-          <cylinder>
-            <radius>0.02</radius>
-            <length>0.05</length>
-          </cylinder>
-        </geometry>
+      <visual name="arm_fl">
+        <pose>0.0885 0.0885 0  0 0 0.7854</pose>
+        <geometry><box><size>0.25 0.016 0.016</size></box></geometry>
         <material>
-          <ambient>0.1 0.1 0.1 1</ambient>
-          <diffuse>0.2 0.2 0.2 1</diffuse>
+          <ambient>0.15 0.15 0.15 1</ambient>
+          <diffuse>0.20 0.20 0.20 1</diffuse>
         </material>
       </visual>
 
-      <visual name="arm_back_left">
-        <pose>-0.15 0.15 0 0 0 0</pose>
-        <geometry>
-          <cylinder>
-            <radius>0.02</radius>
-            <length>0.05</length>
-          </cylinder>
-        </geometry>
+      <visual name="arm_rr">
+        <pose>-0.0885 -0.0885 0  0 0 0.7854</pose>
+        <geometry><box><size>0.25 0.016 0.016</size></box></geometry>
         <material>
-          <ambient>0.1 0.1 0.1 1</ambient>
-          <diffuse>0.2 0.2 0.2 1</diffuse>
+          <ambient>0.15 0.15 0.15 1</ambient>
+          <diffuse>0.20 0.20 0.20 1</diffuse>
         </material>
       </visual>
 
-      <visual name="arm_back_right">
-        <pose>-0.15 -0.15 0 0 0 0</pose>
-        <geometry>
-          <cylinder>
-            <radius>0.02</radius>
-            <length>0.05</length>
-          </cylinder>
-        </geometry>
+      <visual name="arm_rl">
+        <pose>-0.0885 0.0885 0  0 0 -0.7854</pose>
+        <geometry><box><size>0.25 0.016 0.016</size></box></geometry>
         <material>
-          <ambient>0.1 0.1 0.1 1</ambient>
-          <diffuse>0.2 0.2 0.2 1</diffuse>
+          <ambient>0.15 0.15 0.15 1</ambient>
+          <diffuse>0.20 0.20 0.20 1</diffuse>
         </material>
       </visual>
 
-      <!-- Propellers -->
-      <visual name="prop_front_left">
-        <pose>0.15 0.15 0.08 0 0 0</pose>
-        <geometry>
-          <cylinder>
-            <radius>0.08</radius>
-            <length>0.01</length>
-          </cylinder>
-        </geometry>
+      <!-- ═══ MOTOR PODS (small cylinders at arm tips) ═══ -->
+      <visual name="motor_fr">
+        <pose>0.177 -0.177 0.018 0 0 0</pose>
+        <geometry><cylinder><radius>0.016</radius><length>0.036</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+
+      <visual name="motor_fl">
+        <pose>0.177 0.177 0.018 0 0 0</pose>
+        <geometry><cylinder><radius>0.016</radius><length>0.036</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+
+      <visual name="motor_rr">
+        <pose>-0.177 -0.177 0.018 0 0 0</pose>
+        <geometry><cylinder><radius>0.016</radius><length>0.036</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+
+      <visual name="motor_rl">
+        <pose>-0.177 0.177 0.018 0 0 0</pose>
+        <geometry><cylinder><radius>0.016</radius><length>0.036</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+
+      <!-- ═══ PROPELLER DISCS ═══ -->
+      <!-- CW  rotors (FR + RL) : orange -->
+      <visual name="prop_fr">
+        <pose>0.177 -0.177 0.052 0 0 0</pose>
+        <geometry><cylinder><radius>0.115</radius><length>0.005</length></cylinder></geometry>
         <material>
-          <ambient>0.9 0.1 0.1 0.8</ambient>
-          <diffuse>0.9 0.1 0.1 0.8</diffuse>
+          <ambient>0.95 0.40 0.00 0.75</ambient>
+          <diffuse>0.95 0.40 0.00 0.75</diffuse>
         </material>
       </visual>
 
-      <visual name="prop_front_right">
-        <pose>0.15 -0.15 0.08 0 0 0</pose>
-        <geometry>
-          <cylinder>
-            <radius>0.08</radius>
-            <length>0.01</length>
-          </cylinder>
-        </geometry>
+      <visual name="prop_rl">
+        <pose>-0.177 0.177 0.052 0 0 0</pose>
+        <geometry><cylinder><radius>0.115</radius><length>0.005</length></cylinder></geometry>
         <material>
-          <ambient>0.9 0.1 0.1 0.8</ambient>
-          <diffuse>0.9 0.1 0.1 0.8</diffuse>
+          <ambient>0.95 0.40 0.00 0.75</ambient>
+          <diffuse>0.95 0.40 0.00 0.75</diffuse>
         </material>
       </visual>
 
-      <visual name="prop_back_left">
-        <pose>-0.15 0.15 0.08 0 0 0</pose>
-        <geometry>
-          <cylinder>
-            <radius>0.08</radius>
-            <length>0.01</length>
-          </cylinder>
-        </geometry>
+      <!-- CCW rotors (FL + RR) : blue-grey -->
+      <visual name="prop_fl">
+        <pose>0.177 0.177 0.052 0 0 0</pose>
+        <geometry><cylinder><radius>0.115</radius><length>0.005</length></cylinder></geometry>
         <material>
-          <ambient>0.1 0.9 0.1 0.8</ambient>
-          <diffuse>0.1 0.9 0.1 0.8</diffuse>
+          <ambient>0.20 0.50 0.80 0.75</ambient>
+          <diffuse>0.20 0.50 0.80 0.75</diffuse>
         </material>
       </visual>
 
-      <visual name="prop_back_right">
-        <pose>-0.15 -0.15 0.08 0 0 0</pose>
-        <geometry>
-          <cylinder>
-            <radius>0.08</radius>
-            <length>0.01</length>
-          </cylinder>
-        </geometry>
+      <visual name="prop_rr">
+        <pose>-0.177 -0.177 0.052 0 0 0</pose>
+        <geometry><cylinder><radius>0.115</radius><length>0.005</length></cylinder></geometry>
         <material>
-          <ambient>0.1 0.9 0.1 0.8</ambient>
-          <diffuse>0.1 0.9 0.1 0.8</diffuse>
+          <ambient>0.20 0.50 0.80 0.75</ambient>
+          <diffuse>0.20 0.50 0.80 0.75</diffuse>
         </material>
       </visual>
+
     </link>
-
   </model>
 </sdf>
