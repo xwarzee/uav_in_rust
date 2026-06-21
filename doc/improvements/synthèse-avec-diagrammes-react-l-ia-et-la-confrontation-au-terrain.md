@@ -266,7 +266,7 @@ flowchart TD
 
 ---
 
-## **🎯 Synthèse des Échanges avec Xavier**
+## **🎯 Synthèse **
 
 ### **1. Le Problème de Base**
 - L’IA génère du **plausible**, pas du **juste**.
@@ -306,7 +306,7 @@ flowchart TD
 
 ---
 
-## **🚀 Prochaines Étapes pour Toi, Xavier**
+## **🚀 Prochaines Étapes **
 
 1. Tester ReAct sur un sous-problème : Commence par un algorithme simple (ex : évitement de base pour 2 drones).
 2. Intégrer un outil de simulation : Gazebo ou PyBullet pour valider tes solutions.
@@ -315,11 +315,4 @@ flowchart TD
 
 ---
 
-## **💬 Questions Ouvertes**
-- As-tu déjà testé ReAct (même informellement) dans ton projet drones ?
-- Quels outils de simulation/validation utilises-tu actuellement ?
-- Quel premier cas d’usage te semblerait le plus pertinent pour commencer avec ReAct ?
-
----
-
-*Document généré à partir des échanges avec Xavier Warzee (Xavier Orga) - Juin 2026*
+*Réflexions pour améliorer la solution  - Juin 2026*
